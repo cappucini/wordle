@@ -3,7 +3,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.config import router as config_router
 from app.api.v1.games import router as games_router
 
-app = FastAPI()
+from contextlib import asynccontextmanager
+from app.db import create_tables
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    create_tables()
+    yield
+
+app = FastAPI(lifespan=lifespan)
+create_tables()
 ROUTERS = [config_router, games_router]
 # register router with the app
 for router in ROUTERS:
