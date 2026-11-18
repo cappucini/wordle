@@ -21,7 +21,7 @@ from sqlalchemy.orm import (
     sessionmaker,
 )
 
-from app.domain.rules import GameStatus
+from app.domain.rules import MAX_WORD_LENGTH, GameStatus
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql+psycopg://wordle:wordle@db:5432/wordle"
@@ -54,7 +54,7 @@ class WordRow(Base):
     __table_args__ = (Index("ix_words_length_is_answer", "length", "is_answer"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    text: Mapped[str] = mapped_column(String(8), unique=True)
+    text: Mapped[str] = mapped_column(String(MAX_WORD_LENGTH), unique=True)
     length: Mapped[int] = mapped_column(Integer)
     is_answer: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -66,7 +66,7 @@ class GameRow(Base):
     owner_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id"), index=True
     )
-    answer: Mapped[str] = mapped_column(String(8))
+    answer: Mapped[str] = mapped_column(String(MAX_WORD_LENGTH))
     word_length: Mapped[int] = mapped_column(Integer)
     max_guesses: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(
@@ -90,7 +90,7 @@ class GuessRow(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     game_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("games.id"))
     number: Mapped[int] = mapped_column(Integer)
-    word: Mapped[str] = mapped_column(String(8))
+    word: Mapped[str] = mapped_column(String(MAX_WORD_LENGTH))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
