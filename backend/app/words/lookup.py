@@ -2,6 +2,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import WordRow
+from app.domain.errors import NoWordsAvailable
 
 
 def random_answer(session: Session, length: int) -> str:
