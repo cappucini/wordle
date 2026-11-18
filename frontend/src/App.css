@@ -293,6 +293,245 @@
   color: var(--ink-soft);
 }
 
+/* ---------- sign-in ---------- */
+
+.auth-form {
+  display: grid;
+  gap: 0.9rem;
+  max-width: 20rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: 1.25rem;
+  text-align: left;
+}
+
+.auth-heading {
+  margin: 0;
+  font-size: 1.25rem;
+  text-align: center;
+}
+
+.field {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.field input {
+  padding: 0.65rem 0.8rem;
+  border: 2px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--page);
+  color: var(--ink);
+  font: inherit;
+}
+
+.field input:focus-visible {
+  outline: 3px solid var(--sage-deep);
+  outline-offset: 1px;
+}
+
+.field-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.auth-form .message {
+  margin: 0;
+}
+
+.auth-form .new-game {
+  justify-self: center;
+}
+
+.new-game:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* a quiet, text-only button: sign out, copy link, show more, switch form */
+.link-button {
+  justify-self: center;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: none;
+  color: var(--pink-deep);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--ink);
+}
+
+.signed-in {
+  margin: 0 0 1rem;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+
+/* ---------- players ---------- */
+
+.players {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem 0.6rem;
+  margin-bottom: 0.9rem;
+  font-size: 0.9rem;
+}
+
+.player-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.player {
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  background: var(--pink-soft);
+  font-weight: 700;
+}
+
+.player.you {
+  background: var(--sage-soft);
+}
+
+.player-count {
+  color: var(--ink-soft);
+}
+
+/* each board row, with room beside it for the name of the player who guessed */
+.board-row {
+  position: relative;
+}
+
+.guesser {
+  position: absolute;
+  left: calc(100% + 0.5rem);
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+/* on narrow screens there is no room beside the board, so the name goes on its own
+   small line under the row, where it can't cover a tile */
+@media (max-width: 46rem) {
+  .guesser {
+    position: static;
+    display: block;
+    transform: none;
+    max-width: none;
+    margin-top: 0.15rem;
+    text-align: right;
+    font-size: 0.7rem;
+  }
+}
+
+/* ---------- your games ---------- */
+
+.game-list {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 2px dashed var(--line);
+}
+
+.game-list-heading {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.game-list ul {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.game-list-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.6rem 0.9rem;
+  border: 2px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
+}
+
+.game-list-item:hover {
+  border-color: var(--pink);
+  transform: translateY(-1px);
+}
+
+.game-list-item.current {
+  border-color: var(--sage-deep);
+  background: var(--sage-soft);
+}
+
+.game-list-main {
+  font-weight: 800;
+}
+
+.game-list-status {
+  justify-self: start;
+  white-space: nowrap;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: var(--stone);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.game-list-status.won {
+  background: var(--sage);
+}
+
+.game-list-status.lost {
+  background: var(--pink-soft);
+}
+
+.game-list-detail {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+/* on narrow screens the detail gets its own line, so nothing is squeezed into wrapping */
+@media (max-width: 30rem) {
+  .game-list-item {
+    grid-template-columns: auto 1fr;
+  }
+
+  .game-list-detail {
+    grid-column: 1 / -1;
+  }
+}
+
 /* ---------- accessibility ---------- */
 
 button:focus-visible {
@@ -309,7 +548,8 @@ button:focus-visible {
 
   .new-game,
   .key,
-  .length-option {
+  .length-option,
+  .game-list-item {
     transition: none;
   }
 }
