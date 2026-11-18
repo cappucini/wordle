@@ -31,7 +31,9 @@ def list_games(session: Session) -> list[GameRow]:
     return list(session.scalars(select(GameRow).order_by(GameRow.created_at.desc())))
 
 
-def submit_guess(session: Session, game_id: UUID, word: str) -> tuple[GuessRow, GameRow]:
+def submit_guess(
+    session: Session, game_id: UUID, word: str
+) -> tuple[GuessRow, GameRow]:
     # lock the game row so two guesses at the same moment are handled one at a time
     game = session.get(GameRow, game_id, with_for_update=True)
     if game is None:
@@ -47,6 +49,8 @@ def submit_guess(session: Session, game_id: UUID, word: str) -> tuple[GuessRow, 
 
     guess = GuessRow(number=len(game.guesses) + 1, word=word)
     game.guesses.append(guess)
-    game.status = next_status(len(game.guesses), game.max_guesses, word == game.answer).value
+    game.status = next_status(
+        len(game.guesses), game.max_guesses, word == game.answer
+    ).value
     session.commit()
     return guess, game

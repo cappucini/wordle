@@ -62,13 +62,19 @@ from app.domain.scoring import score
 class CreateGameRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    word_length: int = Field(default=DEFAULT_WORD_LENGTH, ge=MIN_WORD_LENGTH, le=MAX_WORD_LENGTH)
+    word_length: int = Field(
+        default=DEFAULT_WORD_LENGTH, ge=MIN_WORD_LENGTH, le=MAX_WORD_LENGTH
+    )
 
 
 class CreateGuessRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, str_to_lower=True)
+    model_config = ConfigDict(
+        extra="forbid", str_strip_whitespace=True, str_to_lower=True
+    )
 
-    word_guessed: str = Field(min_length=MIN_WORD_LENGTH, max_length=MAX_WORD_LENGTH, pattern=WORD_PATTERN)
+    word_guessed: str = Field(
+        min_length=MIN_WORD_LENGTH, max_length=MAX_WORD_LENGTH, pattern=WORD_PATTERN
+    )
 
 
 class GuessResponse(BaseModel):
@@ -78,7 +84,9 @@ class GuessResponse(BaseModel):
 
     @classmethod
     def from_row(cls, guess, answer: str) -> "GuessResponse":
-        return cls(number=guess.number, word=guess.word, results=score(guess.word, answer))
+        return cls(
+            number=guess.number, word=guess.word, results=score(guess.word, answer)
+        )
 
 
 class GameResponse(BaseModel):
@@ -88,7 +96,7 @@ class GameResponse(BaseModel):
     guesses_remaining: int
     status: GameStatus
     guesses: list[GuessResponse]
-    answer: str | None = None      # only revealed once the game is over
+    answer: str | None = None  # only revealed once the game is over
     created_at: datetime
 
     @classmethod
@@ -100,7 +108,9 @@ class GameResponse(BaseModel):
             max_guesses=game.max_guesses,
             guesses_remaining=game.max_guesses - len(game.guesses),
             status=game.status,
-            guesses=[GuessResponse.from_row(guess, game.answer) for guess in game.guesses],
+            guesses=[
+                GuessResponse.from_row(guess, game.answer) for guess in game.guesses
+            ],
             answer=game.answer if is_over else None,
             created_at=game.created_at,
         )

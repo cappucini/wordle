@@ -9,7 +9,8 @@ from app.domain.rules import (
 # create a countainer for routes
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
 
-#Register GET request to /api/v1/config
+
+# Register GET request to /api/v1/config
 @router.get("")
 def read_configuration():
     return {

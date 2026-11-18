@@ -118,3 +118,55 @@ API documentation is automatically available at `http://localhost:8000/docs`.
 4. Build your UI in the `frontend/src/` directory
 5. The frontend is configured to make requests to `http://localhost:8000`
 
+### Word Lists
+
+The game uses two word lists for each word length (5 to 8 letters), stored in `backend/app/words/data/`:
+
+- `valid_N.txt` - every N-letter word accepted as a guess
+- `answers_N.txt` - the smaller set of common words that can be chosen as a game's answer
+
+These files are committed to the repository and loaded into the database automatically when the backend starts. **You do not need to rebuild them to run the app.**
+
+**Sources**
+
+- Valid guesses come from the [ENABLE word list](https://github.com/dolph/dictionary) (public domain).
+- Answers are the words that also appear in a [list of the 10,000 most common English words](https://github.com/first20hours/google-10000-english), which is derived from the Google Web Trillion Word Corpus and permitted for educational use. Plurals and proper nouns are filtered out, so answers are familiar words and never plural.
+
+**Rebuilding the word lists (optional)**
+
+Run these commands from the repository root. They need Python 3.9 or later and an internet connection.
+
+1. Download the two source lists into `backend/scripts/sources/` (this folder is not committed):
+
+```bash
+mkdir -p backend/scripts/sources
+
+curl -sSL -o backend/scripts/sources/enable_dictionary_words.txt https://raw.githubusercontent.com/dolph/dictionary/master/enable1.txt
+
+curl -sSL -o backend/scripts/sources/common_words.txt https://raw.githubusercontent.com/first20hours/google-10000-english/master/google-10000-english-usa-no-swears.txt
+```
+
+2. Build the eight files:
+
+```bash
+python3 backend/scripts/build_word_lists.py \
+    backend/scripts/sources/enable_dictionary_words.txt \
+    backend/scripts/sources/common_words.txt \
+    backend/app/words/data \
+    /usr/share/dict/propernames \
+    /usr/share/dict/words
+```
+
+The script prints the number of valid words and answers for each length. The last two arguments are macOS system files used to keep names and places out of the answers. They are optional: without them the script still runs and applies only its built-in exclusion list.
+
+3. Reload the words into the database, which is only seeded when the `words` table is empty:
+
+```bash
+docker compose exec db psql -U wordle -d wordle -c "TRUNCATE words;"
+docker compose restart backend
+```
+
+**Known limits**
+
+- Plural detection is a spelling heuristic: a word ending in "s" is excluded from the answers when undoing a common plural ending gives another dictionary word. It errs towards excluding too much (for example, `news` is dropped).
+- Verb forms such as `showed` are allowed as answers.

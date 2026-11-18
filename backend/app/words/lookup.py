@@ -17,6 +17,8 @@ def random_answer(session: Session, length: int) -> str:
     return answer
 
 
-
 def is_valid(session: Session, word: str) -> bool:
-    return session.execute(select(WordRow.id).where(WordRow.text == word)).first() is not None
+    return (
+        session.execute(select(WordRow.id).where(WordRow.text == word)).first()
+        is not None
+    )

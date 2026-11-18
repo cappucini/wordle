@@ -1,8 +1,7 @@
-
-# # path to get all games 
+# # path to get all games
 
 # # path to get specific game
-# # games/:id 
+# # games/:id
 
 # from fastapi import APIRouter, HTTPException
 # from uuid import UUID
@@ -71,6 +70,8 @@ def read_guesses(game_id: UUID, session: Session = Depends(get_session)):
 
 
 @router.post("/{game_id}/guesses", status_code=201, response_model=GuessCreatedResponse)
-def submit_guess(game_id: UUID, body: CreateGuessRequest, session: Session = Depends(get_session)):
+def submit_guess(
+    game_id: UUID, body: CreateGuessRequest, session: Session = Depends(get_session)
+):
     guess, game = game_service.submit_guess(session, game_id, body.word_guessed)
     return GuessCreatedResponse.from_rows(guess, game)
