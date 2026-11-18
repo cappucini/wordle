@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from app.words.seed import seed_words_if_empty
 
 from app.domain.errors import GameNotFound, GameOver, InvalidGuess
-
+from fastapi.exceptions import RequestValidationError
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,6 +27,17 @@ ROUTERS = [config_router, games_router]
 for router in ROUTERS:
     app.include_router(router)
 
+# Additional handler that replaes built-in validation error response with my own
+# every error will have {"code": ..., "detail": "text"} so frontend can parse easier
+@app.exception_handler(RequestValidationError)
+def handle_validation_error(request: Request, exc: RequestValidationError):
+    first_error = exc.errors()[0]
+    field = first_error["loc"][-1]          # the field name, such as "word_length"
+    message = first_error["msg"]            # such as "Input should be less than or equal to 8"
+    return JSONResponse(
+        status_code=422,
+        content={"code": "INVALID_REQUEST", "detail": f"{field}: {message}"},
+    )
 
 @app.exception_handler(GameNotFound)
 def handle_game_not_found(request: Request, exc: GameNotFound):
