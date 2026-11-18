@@ -36,6 +36,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app import game_service
+from app.api.v1.auth import get_current_user
 from app.api.v1.pagination import decode_cursor, encode_cursor
 from app.api.v1.schemas import (
     CreateGameRequest,
@@ -45,21 +46,25 @@ from app.api.v1.schemas import (
     GuessCreatedResponse,
     GuessResponse,
 )
-from app.db import get_session
+from app.db import UserRow, get_session
 
 router = APIRouter(prefix="/api/v1/games", tags=["games"])
+
+# Every route here needs a signed-in user: Depends(get_current_user) reads the token
+# from the request and returns the user, or stops the request with a 401.
 
 
 @router.get("", response_model=GameListResponse)
 def read_games(
     limit: int = Query(default=20, ge=1, le=100),
     cursor: str | None = Query(default=None),
+    user: UserRow = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    # Newest first, one page at a time. The first request has no cursor; each response carries
-    # next_cursor, which the client sends back as ?cursor= to get the following page.
+    # The signed-in user's games, newest first, one page at a time. The first request has no
+    # cursor; each response carries next_cursor, which the client sends back as ?cursor=.
     after = decode_cursor(cursor) if cursor is not None else None
-    games, has_more = game_service.list_games(session, limit=limit, after=after)
+    games, has_more = game_service.list_games(session, user, limit=limit, after=after)
 
     next_cursor = None
     if has_more:
@@ -73,24 +78,53 @@ def read_games(
 
 
 @router.post("", status_code=201, response_model=GameResponse)
-def create_game(body: CreateGameRequest, session: Session = Depends(get_session)):
-    return GameResponse.from_row(game_service.create_game(session, body.word_length))
+def create_game(
+    body: CreateGameRequest,
+    user: UserRow = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    game = game_service.create_game(session, user, body.word_length)
+    return GameResponse.from_row(game)
 
 
 @router.get("/{game_id}", response_model=GameResponse)
-def get_game(game_id: UUID, session: Session = Depends(get_session)):
-    return GameResponse.from_row(game_service.get_game(session, game_id))
+def get_game(
+    game_id: UUID,
+    user: UserRow = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    return GameResponse.from_row(game_service.get_game(session, user, game_id))
+
+
+# Join a game as a player. Opening a shared game link calls this. It is safe to call
+# more than once: joining a game you are already in simply returns the game.
+@router.post("/{game_id}/players", response_model=GameResponse)
+def join_game(
+    game_id: UUID,
+    user: UserRow = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    return GameResponse.from_row(game_service.join_game(session, user, game_id))
 
 
 @router.get("/{game_id}/guesses", response_model=list[GuessResponse])
-def read_guesses(game_id: UUID, session: Session = Depends(get_session)):
-    game = game_service.get_game(session, game_id)
+def read_guesses(
+    game_id: UUID,
+    user: UserRow = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    game = game_service.get_game(session, user, game_id)
     return [GuessResponse.from_row(guess, game.answer) for guess in game.guesses]
 
 
 @router.post("/{game_id}/guesses", status_code=201, response_model=GuessCreatedResponse)
 def submit_guess(
-    game_id: UUID, body: CreateGuessRequest, session: Session = Depends(get_session)
+    game_id: UUID,
+    body: CreateGuessRequest,
+    user: UserRow = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ):
-    guess, game = game_service.submit_guess(session, game_id, body.word_guessed)
+    guess, game = game_service.submit_guess(
+        session, user, game_id, body.word_guessed
+    )
     return GuessCreatedResponse.from_rows(guess, game)

@@ -5,8 +5,16 @@ MIN_WORD_LENGTH = 5
 MAX_WORD_LENGTH = 8
 DEFAULT_WORD_LENGTH = 5
 EXTRA_GUESSES = 1  # a game allows word_length + EXTRA_GUESSES guesses
-MAX_PLAYERS_PER_GAME = 4
+MAX_PLAYERS_PER_GAME = 3  # a game is shared by at most this many players
 WORD_PATTERN = r"^[A-Za-z]+$"  # letters only; no digits, spaces or symbols
+
+# Accounts
+MIN_USERNAME_LENGTH = 3
+MAX_USERNAME_LENGTH = 20
+USERNAME_PATTERN = r"^[a-z0-9_]+$"  # lowercase letters, digits and underscores
+MIN_PASSWORD_LENGTH = 8
+MAX_PASSWORD_LENGTH = 128
+SESSION_DAYS = 7  # how long a sign-in stays valid
 
 
 class LetterResult(str, Enum):

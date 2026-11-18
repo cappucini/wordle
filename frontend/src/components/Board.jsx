@@ -3,6 +3,7 @@
 // and the rest are empty.
 function Board({ game, typedWord, hasError }) {
   const rows = []
+  const isShared = game.players.length > 1
 
   for (let rowIndex = 0; rowIndex < game.max_guesses; rowIndex++) {
     const guess = game.guesses[rowIndex] // undefined for rows not played yet
@@ -40,8 +41,14 @@ function Board({ game, typedWord, hasError }) {
     }
 
     rows.push(
-      <div key={rowIndex} className={isTypingRow && hasError ? 'row shake' : 'row'}>
-        {tiles}
+      <div key={rowIndex} className="board-row">
+        <div className={isTypingRow && hasError ? 'row shake' : 'row'}>{tiles}</div>
+        {/* in a shared game, name the player who made this guess */}
+        {isShared && guess !== undefined && guess.guessed_by && (
+          <span className="guesser" title={'Guessed by ' + guess.guessed_by}>
+            {guess.guessed_by}
+          </span>
+        )}
       </div>,
     )
   }

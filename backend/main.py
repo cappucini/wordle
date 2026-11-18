@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.config import router as config_router
 from app.api.v1.games import router as games_router
 from app.api.v1.pagination import InvalidCursor
+from app.api.v1.users import router as users_router
 
 from contextlib import asynccontextmanager
 from app.db import create_tables, SessionLocal
@@ -12,7 +13,17 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from app.words.seed import seed_words_if_empty
 
-from app.domain.errors import GameNotFound, GameOver, InvalidGuess, NoWordsAvailable
+from app.domain.errors import (
+    GameFull,
+    GameNotFound,
+    GameOver,
+    InvalidCredentials,
+    InvalidGuess,
+    NotAPlayer,
+    NotAuthenticated,
+    NoWordsAvailable,
+    UsernameTaken,
+)
 from fastapi.exceptions import RequestValidationError
 
 @asynccontextmanager
@@ -25,7 +36,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 # create_tables()
-ROUTERS = [config_router, games_router]
+ROUTERS = [config_router, games_router, users_router]
 # register router with the app
 for router in ROUTERS:
     # attach API routes defined in router files
@@ -81,6 +92,45 @@ def handle_game_over(request: Request, exc: GameOver):
 def handle_invalid_guess(request: Request, exc: InvalidGuess):
     return JSONResponse(
         status_code=422, content={"code": "INVALID_GUESS", "detail": str(exc)}
+    )
+
+
+# --- accounts and multiplayer ---
+
+# no sign-in token, or one that is unknown or expired
+@app.exception_handler(NotAuthenticated)
+def handle_not_authenticated(request: Request, exc: NotAuthenticated):
+    return JSONResponse(
+        status_code=401, content={"code": "NOT_AUTHENTICATED", "detail": str(exc)}
+    )
+
+
+@app.exception_handler(InvalidCredentials)
+def handle_invalid_credentials(request: Request, exc: InvalidCredentials):
+    return JSONResponse(
+        status_code=401, content={"code": "INVALID_CREDENTIALS", "detail": str(exc)}
+    )
+
+
+@app.exception_handler(UsernameTaken)
+def handle_username_taken(request: Request, exc: UsernameTaken):
+    return JSONResponse(
+        status_code=409, content={"code": "USERNAME_TAKEN", "detail": str(exc)}
+    )
+
+
+# signed in, but not one of this game's players
+@app.exception_handler(NotAPlayer)
+def handle_not_a_player(request: Request, exc: NotAPlayer):
+    return JSONResponse(
+        status_code=403, content={"code": "NOT_A_PLAYER", "detail": str(exc)}
+    )
+
+
+@app.exception_handler(GameFull)
+def handle_game_full(request: Request, exc: GameFull):
+    return JSONResponse(
+        status_code=409, content={"code": "GAME_FULL", "detail": str(exc)}
     )
 
 

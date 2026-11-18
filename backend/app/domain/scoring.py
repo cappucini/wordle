@@ -2,6 +2,7 @@ from app.domain.rules import LetterResult
 
 
 def score(guess: str, answer: str) -> list[LetterResult]:
+    # list of empty letter results
     results = [LetterResult.absent] * len(guess)
     remaining = list(answer)
 

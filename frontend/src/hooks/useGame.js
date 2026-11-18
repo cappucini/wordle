@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createGame, getConfig, getGame, submitGuess } from '../api'
+import { createGame, getConfig, getGame, joinGame, listGames, submitGuess } from '../api'
 import { errorText } from '../errorText'
 import { clearGameIdFromUrl, getGameIdFromUrl, setGameIdInUrl } from '../gameUrl'
 
+// how often a game in progress is checked for the other players' guesses
+const POLL_INTERVAL_MS = 3000
+
 // Holds everything the game screen needs to know, and the actions that change it.
 // Components only display what this returns; they never call the API themselves.
-// This is called from App.jsx inside App() component
+// This is called from GameScreen.jsx, which is only shown once a player has signed in.
 export function useGame() {
   // Every call useState() dedicates a piece of state with a given starting value.
   // They belong to the page's working memory, and will be wiped on refresh.
@@ -14,7 +17,19 @@ export function useGame() {
   const [game, setGame] = useState(null) // the game being played, from the backend
   const [typedWord, setTypedWord] = useState('') // the guess being typed
   const [message, setMessage] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  // Two refs that mirror what the key handler needs to read. A ref can be read the instant
+  // it changes, where state only updates on the next redraw. Without them, key presses that
+  // arrive in a quick burst would each see the same out-of-date word and overwrite each other,
+  // and a second Enter could slip through before "submitting" had taken effect.
+  const typedWordRef = useRef('')
+  const isSubmitting = useRef(false)
+
+  // The one way to change the typed word: updates the ref (for the key handler) and the
+  // state (for the screen) together, so they can never disagree.
+  const changeTypedWord = useCallback((nextWord) => {
+    typedWordRef.current = nextWord
+    setTypedWord(nextWord)
+  }, [])
   // true when the message is about the word being typed, so only then does the row shake
   const [rowHasProblem, setRowHasProblem] = useState(false)
   // true while a game named in the address bar is being fetched, so the page can wait
@@ -22,6 +37,12 @@ export function useGame() {
   const [isLoadingGame, setIsLoadingGame] = useState(() => getGameIdFromUrl() !== null)
   // a ref, not state: it must change immediately so a double-click can't start two games
   const isStartingGame = useRef(false)
+  // "Your games": the signed-in player's games, newest first, loaded a page at a time
+  const [games, setGames] = useState([])
+  const [nextGamesCursor, setNextGamesCursor] = useState(null) // null when there are no more pages
+  // Counts the game loads started. If Back and Forward are pressed quickly, an older request
+  // can finish after a newer one; its answer is ignored so the wrong game never shows.
+  const latestLoad = useRef(0)
 
   // This is called each time useGame() hook runs, registering load data functions.
   useEffect(() => {
@@ -37,52 +58,125 @@ export function useGame() {
       .catch((error) => setMessage(errorText(error)))
   }, [])
 
-  // Show the game whose ID is in the address bar: on first load, and again whenever the
-  // player uses the browser's Back or Forward buttons to move between games.
-  useEffect(() => {
-    // Counts the loads started here. If Back and Forward are pressed quickly, an older
-    // request can finish after a newer one; its answer is ignored so the wrong game never shows.
-    let latestLoad = 0
+  // Fetch the first page of the player's games. Called on load and whenever the list may
+  // have changed (a game was started, joined or finished).
+  const refreshGames = useCallback(() => {
+    listGames()
+      .then((page) => {
+        setGames(page.items)
+        setNextGamesCursor(page.next_cursor)
+      })
+      .catch(() => {
+        // the list is a convenience; a failure here shouldn't interrupt the game on screen
+      })
+  }, [])
 
-    function showGameFromUrl() {
-      const gameId = getGameIdFromUrl()
-      latestLoad += 1
-      const thisLoad = latestLoad
-      setTypedWord('')
-      setRowHasProblem(false)
-
-      if (gameId === null) {
-        setGame(null)
-        setMessage('') // don't leave a message from the previous game on screen
-        setIsLoadingGame(false)
-        return
-      }
-      setIsLoadingGame(true)
-      getGame(gameId)
-        .then((loadedGame) => {
-          if (thisLoad !== latestLoad) {
-            return // a newer load has started since; ignore this stale answer
-          }
-          setGame(loadedGame)
-          setMessage('')
-          setIsLoadingGame(false)
-        })
-        .catch((error) => {
-          if (thisLoad !== latestLoad) {
-            return
-          }
-          // the link points to a game that doesn't exist (or isn't a valid ID)
-          clearGameIdFromUrl()
-          setGame(null)
-          setMessage(errorText(error))
-          setIsLoadingGame(false)
-        })
+  // Fetch the next page and add it to the end of the list.
+  function loadMoreGames() {
+    if (nextGamesCursor === null) {
+      return
     }
+    listGames(nextGamesCursor)
+      .then((page) => {
+        setGames((current) => current.concat(page.items))
+        setNextGamesCursor(page.next_cursor)
+      })
+      .catch((error) => setMessage(errorText(error)))
+  }
 
+  // Show the game whose ID is in the address bar.
+  // It joins the game first: opening a link someone shared is how a player joins their game.
+  // Joining a game you are already in changes nothing, so this is also how your own games load.
+  const showGameFromUrl = useCallback(() => {
+    const gameId = getGameIdFromUrl()
+    latestLoad.current += 1
+    const thisLoad = latestLoad.current
+    changeTypedWord('')
+    setRowHasProblem(false)
+
+    if (gameId === null) {
+      setGame(null)
+      setMessage('') // don't leave a message from the previous game on screen
+      setIsLoadingGame(false)
+      return
+    }
+    setIsLoadingGame(true)
+    joinGame(gameId)
+      .then((loadedGame) => {
+        if (thisLoad !== latestLoad.current) {
+          return // a newer load has started since; ignore this stale answer
+        }
+        setGame(loadedGame)
+        setMessage('')
+        setIsLoadingGame(false)
+        refreshGames() // a game joined through a link now belongs in "Your games"
+      })
+      .catch((error) => {
+        if (thisLoad !== latestLoad.current) {
+          return
+        }
+        // the link points to a game that doesn't exist, isn't a valid ID, or is already full
+        clearGameIdFromUrl()
+        setGame(null)
+        setMessage(errorText(error))
+        setIsLoadingGame(false)
+      })
+  }, [refreshGames, changeTypedWord])
+
+  // Run it on first load, and again whenever the player uses the browser's Back or Forward
+  // buttons to move between games.
+  useEffect(() => {
     showGameFromUrl()
+    refreshGames()
     window.addEventListener('popstate', showGameFromUrl)
     return () => window.removeEventListener('popstate', showGameFromUrl)
-  }, [])
+  }, [showGameFromUrl, refreshGames])
+
+  // Switch to another of the player's games, from the "Your games" list.
+  function openGame(gameId) {
+    if (gameId === getGameIdFromUrl()) {
+      return // already showing it; don't add a duplicate entry to the browser's history
+    }
+    setGameIdInUrl(gameId)
+    showGameFromUrl()
+  }
+
+  // While a game is in progress, check the server every few seconds for guesses made by the
+  // other players, so a shared board updates without anyone refreshing.
+  const gameId = game !== null ? game.id : null
+  const isInProgress = game !== null && game.status === 'in_progress'
+  useEffect(() => {
+    if (gameId === null || !isInProgress) {
+      return
+    }
+    const timer = setInterval(() => {
+      if (document.hidden) {
+        return // don't poll from a tab nobody is looking at
+      }
+      getGame(gameId)
+        .then((latest) => {
+          setGame((current) => {
+            if (current === null || current.id !== latest.id) {
+              return current // the player has moved to a different game meanwhile
+            }
+            // only accept news: never replace the board with an older copy of itself
+            const hasNews =
+              latest.guesses.length > current.guesses.length ||
+              latest.status !== current.status ||
+              latest.players.length !== current.players.length
+            return hasNews ? latest : current
+          })
+          if (latest.status !== 'in_progress') {
+            refreshGames() // another player finished it: update its status in "Your games"
+          }
+        })
+        .catch(() => {
+          // a missed check is harmless; the next one will catch up
+        })
+    }, POLL_INTERVAL_MS)
+    // stop the timer when the game changes or ends, so there is never more than one
+    return () => clearInterval(timer)
+  }, [gameId, isInProgress, refreshGames])
 
   async function startGame() {
     if (isStartingGame.current) {
@@ -93,9 +187,10 @@ export function useGame() {
       const newGame = await createGame(wordLength)
       setGameIdInUrl(newGame.id)
       setGame(newGame)
-      setTypedWord('')
+      changeTypedWord('')
       setMessage('')
       setRowHasProblem(false)
+      refreshGames()
     } catch (error) {
       setMessage(errorText(error))
       setRowHasProblem(false)
@@ -112,9 +207,11 @@ export function useGame() {
       // - no game has been started yet
       // - game is already won or lost
       // - we're in the process already of submitting guess to server
-      if (game === null || game.status !== 'in_progress' || isSubmitting) {
+      if (game === null || game.status !== 'in_progress' || isSubmitting.current) {
         return
       }
+      // read the word from the ref, so this is right even if several keys arrive before a redraw
+      const typedWord = typedWordRef.current
       // if it's "Enter" on the on-screen Enter Key or the keyboard
       if (key === 'Enter') {
         // reject submission if there are not enough letters
@@ -124,7 +221,7 @@ export function useGame() {
           setRowHasProblem(true)
           return
         }
-        setIsSubmitting(true)
+        isSubmitting.current = true
         try {
           // Step 1: send the guess.
           try {
@@ -134,7 +231,7 @@ export function useGame() {
             if (error.code === 'GAME_OVER') {
               // The game was finished somewhere else (another tab, or another player).
               // Reload it so this board shows the final result instead of staying stale.
-              setTypedWord('')
+              changeTypedWord('')
               setRowHasProblem(false)
               setGame(await getGame(game.id))
             } else {
@@ -146,29 +243,30 @@ export function useGame() {
 
           // Step 2: the guess is saved. Clear the typed letters straight away, so that if the
           // reload below fails, pressing Enter again can't submit the same word a second time.
-          setTypedWord('')
+          changeTypedWord('')
           setMessage('')
           setRowHasProblem(false)
 
           // Step 3: the server owns the game, so reload it rather than updating our own copy.
           setGame(await getGame(game.id))
+          refreshGames() // keep the guess count and status in "Your games" up to date
         } catch (error) {
           // only a failed reload reaches here: the guess (if any) is safe on the server
           setMessage(errorText(error))
         } finally {
-          setIsSubmitting(false)
+          isSubmitting.current = false
         }
       } else if (key === 'Backspace') {
-        setTypedWord(typedWord.slice(0, -1))
+        changeTypedWord(typedWord.slice(0, -1))
         setMessage('')
         setRowHasProblem(false)
       } else if (/^[a-zA-Z]$/.test(key) && typedWord.length < game.word_length) {
-        setTypedWord(typedWord + key.toLowerCase())
+        changeTypedWord(typedWord + key.toLowerCase())
         setMessage('')
         setRowHasProblem(false)
       }
     },
-    [game, typedWord, isSubmitting],
+    [game, refreshGames, changeTypedWord],
   )
 
   // Listen to the physical keyboard.
@@ -207,5 +305,9 @@ export function useGame() {
     rowHasProblem,
     startGame,
     pressKey,
+    games,
+    hasMoreGames: nextGamesCursor !== null,
+    loadMoreGames,
+    openGame,
   }
 }

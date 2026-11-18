@@ -34,7 +34,10 @@ function NewGameControls({ config, wordLength, onChangeLength, onStart }) {
         className="new-game"
         onClick={(event) => {
           onStart()
-          blurAfterMouseClick(event)
+          // Always give up focus here, even when the button was pressed from the keyboard.
+          // The next thing the player does is type a word and press Enter, and with focus
+          // still on this button that Enter would start yet another game.
+          event.currentTarget.blur()
         }}
       >
         New game

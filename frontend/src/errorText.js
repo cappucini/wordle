@@ -7,6 +7,12 @@ const FRIENDLY_MESSAGES = {
   GAME_OVER: 'This game has already finished.',
   INVALID_REQUEST: "That link or request isn't valid. Start a new game?",
   NETWORK_ERROR: "Can't reach the game server. Is it running?",
+  NOT_AUTHENTICATED: 'Please sign in to continue.',
+  INVALID_CREDENTIALS: 'Wrong username or password.',
+  USERNAME_TAKEN: 'That username is taken. Try another, or sign in.',
+  NOT_A_PLAYER: "You're not a player in that game.",
+  GAME_FULL: 'That game already has the maximum number of players.',
+  NO_WORDS_AVAILABLE: "The word lists aren't loaded yet. Try again in a moment.",
 }
 
 const FALLBACK_MESSAGE = 'Something went wrong. Please try again.'
