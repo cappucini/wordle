@@ -1,42 +1,315 @@
-#root {
-  max-width: 1280px;
+/* Layout and components for the game screen. Colours come from index.css. */
+
+.app {
+  width: 100%;
+  max-width: 30rem;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 1.5rem 1rem 2rem;
+  box-sizing: border-box;
   text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+/* ---------- title ---------- */
+
+.title {
+  margin: 0 0 1.25rem;
+  font-size: clamp(2.5rem, 12vw, 3.75rem);
+  line-height: 1;
+  letter-spacing: 0.02em;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+.title-letter {
+  display: inline-block;
+  animation: bob 2.4s ease-in-out infinite;
+}
+
+.title-letter.pink {
+  color: var(--pink-deep);
+}
+
+.title-letter.sage {
+  color: var(--sage-deep);
+  animation-delay: 0.3s;
+}
+
+@keyframes bob {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-6px) rotate(2deg); }
+}
+
+/* ---------- new game controls ---------- */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+  align-items: center;
+}
+
+.length-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.75rem 0.3rem 0.3rem;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: 999px;
+}
+
+.length-option {
+  width: 2.4rem;
+  height: 2.4rem;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.length-option:hover {
+  background: var(--pink-soft);
+}
+
+.length-option.selected {
+  background: var(--sage);
+  color: var(--ink);
+  transform: scale(1.08);
+}
+
+.length-label {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.new-game {
+  padding: 0.7rem 1.4rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--pink);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 0 var(--pink-deep);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.new-game:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 0 var(--pink-deep);
+}
+
+.new-game:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--pink-deep);
+}
+
+/* ---------- messages ---------- */
+
+.message {
+  min-height: 1.5rem;
+  margin: 0.9rem 0 0.6rem;
+  color: var(--pink-deep);
+  font-weight: 700;
+}
+
+.hint {
+  margin: 2rem auto;
+  max-width: 22rem;
+  color: var(--ink-soft);
+}
+
+.result {
+  margin: 1rem 0 0;
+  padding: 0.7rem 1rem;
+  border-radius: 1rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.result.won {
+  background: var(--sage-soft);
+}
+
+.result.lost {
+  background: var(--pink-soft);
+}
+
+.result strong {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ---------- board ---------- */
+
+.board {
+  display: grid;
+  gap: 0.4rem;
+  /* narrower tiles for longer words, so 8 letters still fit on a phone */
+  max-width: calc(var(--columns) * 3.6rem);
+  margin: 0 auto;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(var(--columns), 1fr);
+  gap: 0.4rem;
+}
+
+.row.shake {
+  animation: shake 0.35s;
+}
+
+.tile {
+  position: relative;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: clamp(1.1rem, 5vw, 1.7rem);
+  font-weight: 800;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+/* a letter that has been typed but not submitted */
+.tile.filled {
+  border-color: var(--ink-soft);
+  animation: pop 0.12s;
+}
+
+/* scored tiles flip in one after another */
+.tile.correct,
+.tile.present,
+.tile.absent {
+  animation: reveal 0.45s both;
+  animation-delay: var(--delay);
+}
+
+.tile.correct {
+  background: var(--sage);
+  border-color: var(--sage-deep);
+}
+
+/* the dashed border marks "wrong position", so the result isn't shown by colour alone */
+.tile.present {
+  background: var(--red);
+  border-color: var(--red-deep);
+  border-style: dashed;
+}
+
+.tile.absent {
+  background: var(--stone);
+  border-color: var(--stone);
+  color: var(--ink-soft);
+}
+
+@keyframes pop {
+  0% { transform: scale(0.85); }
+  70% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+@keyframes reveal {
+  0% { transform: rotateX(90deg); }
+  100% { transform: rotateX(0); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+/* ---------- on-screen keyboard ---------- */
+
+.keyboard {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 1.25rem;
+}
+
+.keyboard-row {
+  display: flex;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
+.key {
+  flex: 1;
+  max-width: 2.6rem;
+  height: 3.2rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.6rem;
+  background: var(--key);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.08s, background 0.2s;
+}
+
+.key.wide {
+  flex: 1.6;
+  max-width: 4.2rem;
+  font-size: 0.7rem;
+}
+
+.key:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.key:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.key:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.key.correct {
+  background: var(--sage);
+}
+
+.key.present {
+  background: var(--red);
+  outline: 2px dashed var(--red-deep);
+  outline-offset: -3px;
+}
+
+.key.absent {
+  background: var(--stone);
+  color: var(--ink-soft);
+}
+
+/* ---------- accessibility ---------- */
+
+button:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-letter,
+  .tile,
+  .row.shake {
+    animation: none !important;
   }
-  to {
-    transform: rotate(360deg);
+
+  .new-game,
+  .key,
+  .length-option {
+    transition: none;
   }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
 }
