@@ -1,25 +1,23 @@
 import { useEffect, useState } from 'react'
-import { SIGNED_OUT_EVENT, getCurrentUser, hasSavedToken, login, logout, register } from '../api'
+import { SIGNED_OUT_EVENT, getCurrentUser, login, logout, register } from '../api'
 
 // Knows who is signed in, and how to sign in, create an account and sign out.
-// The token itself is handled inside api.js; this hook only keeps the user for the page.
+// The session lives in a cookie the page cannot read, so the only way to know who is signed
+// in is to ask the backend. api.js does the asking; this hook keeps the answer for the page.
 export function useAuth() {
   const [user, setUser] = useState(null) // { id, username }, or null when signed out
-  // true while a saved token is being checked, so the page doesn't flash the sign-in form
-  // at someone who is already signed in
-  const [isCheckingSignIn, setIsCheckingSignIn] = useState(() => hasSavedToken())
+  // true until the backend has answered "who is signed in?", so the page doesn't flash
+  // the sign-in form at someone who is already signed in
+  const [isCheckingSignIn, setIsCheckingSignIn] = useState(true)
   // a line for the sign-in form, set when the player was signed out without asking to be
   const [notice, setNotice] = useState('')
 
-  // On first load: if a token was saved by an earlier visit, ask the backend whose it is.
+  // On first load: ask the backend whether this browser has a session, and whose it is.
   useEffect(() => {
-    if (!hasSavedToken()) {
-      return
-    }
     getCurrentUser()
       .then((currentUser) => setUser(currentUser))
       .catch(() => {
-        // an expired or unknown token: api.js has already cleared it, so stay signed out
+        // no session (or the server can't be reached): stay signed out and show the form
       })
       .finally(() => setIsCheckingSignIn(false))
   }, [])
@@ -28,7 +26,7 @@ export function useAuth() {
   // account signed out elsewhere). Drop the user so the sign-in form comes back.
   useEffect(() => {
     function handleSignedOut() {
-      // This only fires when a saved sign-in was sent and refused, so the player did have one.
+      // This only fires when the page was signed in and the backend then refused the session.
       // Say why the form is back, rather than dropping them on it without a word.
       setUser(null)
       setNotice('Your sign-in has ended. Please sign in again.')
@@ -52,7 +50,7 @@ export function useAuth() {
     try {
       await logout()
     } catch {
-      // the token is forgotten locally either way, so the player is signed out here
+      // api.js forgets the CSRF token either way, so this page can no longer act as the player
     }
     setUser(null)
   }
