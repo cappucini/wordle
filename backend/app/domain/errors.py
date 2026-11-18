@@ -37,3 +37,7 @@ class NotAPlayer(Exception):
 
 class GameFull(Exception):
     pass
+
+
+class CsrfCheckFailed(Exception):
+    """A request that changes something arrived without the session's CSRF token."""

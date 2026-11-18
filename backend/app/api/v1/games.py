@@ -36,7 +36,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app import game_service
-from app.api.v1.auth import get_current_user
+from app.api.v1.auth import get_current_user, require_csrf
 from app.api.v1.pagination import decode_cursor, encode_cursor
 from app.api.v1.schemas import (
     CreateGameRequest,
@@ -50,8 +50,9 @@ from app.db import UserRow, get_session
 
 router = APIRouter(prefix="/api/v1/games", tags=["games"])
 
-# Every route here needs a signed-in user: Depends(get_current_user) reads the token
-# from the request and returns the user, or stops the request with a 401.
+# Every route here needs a signed-in user: Depends(get_current_user) reads the session cookie
+# and returns the user, or stops the request with a 401.
+# Routes that change something (POST) also require the CSRF token: Depends(require_csrf).
 
 
 @router.get("", response_model=GameListResponse)
@@ -77,7 +78,12 @@ def read_games(
     )
 
 
-@router.post("", status_code=201, response_model=GameResponse)
+@router.post(
+    "",
+    status_code=201,
+    response_model=GameResponse,
+    dependencies=[Depends(require_csrf)],
+)
 def create_game(
     body: CreateGameRequest,
     user: UserRow = Depends(get_current_user),
@@ -98,7 +104,11 @@ def get_game(
 
 # Join a game as a player. Opening a shared game link calls this. It is safe to call
 # more than once: joining a game you are already in simply returns the game.
-@router.post("/{game_id}/players", response_model=GameResponse)
+@router.post(
+    "/{game_id}/players",
+    response_model=GameResponse,
+    dependencies=[Depends(require_csrf)],
+)
 def join_game(
     game_id: UUID,
     user: UserRow = Depends(get_current_user),
@@ -117,7 +127,12 @@ def read_guesses(
     return [GuessResponse.from_row(guess, game.answer) for guess in game.guesses]
 
 
-@router.post("/{game_id}/guesses", status_code=201, response_model=GuessCreatedResponse)
+@router.post(
+    "/{game_id}/guesses",
+    status_code=201,
+    response_model=GuessCreatedResponse,
+    dependencies=[Depends(require_csrf)],
+)
 def submit_guess(
     game_id: UUID,
     body: CreateGuessRequest,

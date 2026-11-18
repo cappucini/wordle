@@ -95,8 +95,10 @@ class UserResponse(BaseModel):
 
 class AuthResponse(BaseModel):
     user: UserResponse
-    # the browser sends this back as "Authorization: Bearer <token>" on later requests
-    token: str
+    # The session itself is in an HttpOnly cookie, never in a response body.
+    # This is the CSRF token: the page sends it back in the X-CSRF-Token header
+    # on every request that changes something.
+    csrf_token: str | None = None
 
 
 class CreateGameRequest(BaseModel):
