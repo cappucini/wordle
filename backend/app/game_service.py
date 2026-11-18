@@ -4,44 +4,68 @@ from uuid import UUID
 from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session, selectinload
 
-from app.db import GameRow, GuessRow
-from app.domain.errors import GameNotFound, GameOver, InvalidGuess
-from app.domain.rules import GameStatus, max_guesses_for, next_status
+from app.db import GamePlayerRow, GameRow, GuessRow, UserRow
+from app.domain.errors import (
+    GameFull,
+    GameNotFound,
+    GameOver,
+    InvalidGuess,
+    NotAPlayer,
+)
+from app.domain.rules import (
+    MAX_PLAYERS_PER_GAME,
+    GameStatus,
+    max_guesses_for,
+    next_status,
+)
 from app.words import lookup
 
+# Every function takes the signed-in user. A game belongs to its players:
+# a solo game has one, and a shared game has up to MAX_PLAYERS_PER_GAME.
 
-def create_game(session: Session, word_length: int) -> GameRow:
+
+def create_game(session: Session, user: UserRow, word_length: int) -> GameRow:
     game = GameRow(
         answer=lookup.random_answer(session, word_length),
         word_length=word_length,
         max_guesses=max_guesses_for(word_length),
+        owner=user,
+        players=[user],  # the creator is the first player
     )
     session.add(game)
     session.commit()
     return game
 
 
-def get_game(session: Session, game_id: UUID) -> GameRow:
+def get_game(session: Session, user: UserRow, game_id: UUID) -> GameRow:
     game = session.get(GameRow, game_id)
     if game is None:
         raise GameNotFound(f"Game {game_id} not found")
+    _require_player(game, user)
     return game
 
 
 def list_games(
     session: Session,
+    user: UserRow,
     limit: int = 20,
     after: tuple[datetime, UUID] | None = None,
 ) -> tuple[list[GameRow], bool]:
-    """One page of games, newest first.
+    """One page of the games this user plays in, newest first.
 
     `after` is the (created_at, id) of the last game on the previous page; the page returned
     starts with the next game after it. Returns the games and whether more remain.
     """
     query = (
         select(GameRow)
-        # load every listed game's guesses in one extra query, not one query per game
-        .options(selectinload(GameRow.guesses))
+        # only games where this user has a row in game_players
+        .join(GamePlayerRow, GamePlayerRow.game_id == GameRow.id)
+        .where(GamePlayerRow.user_id == user.id)
+        # load the listed games' guesses and players in a few queries, not one per game
+        .options(
+            selectinload(GameRow.guesses).selectinload(GuessRow.user),
+            selectinload(GameRow.players),
+        )
         # id breaks the tie when two games share a created_at, so the order is always the same
         .order_by(GameRow.created_at.desc(), GameRow.id.desc())
         # ask for one extra row: if it comes back, there is another page
@@ -56,13 +80,32 @@ def list_games(
     return games[:limit], has_more
 
 
-def submit_guess(
-    session: Session, game_id: UUID, word: str
-) -> tuple[GuessRow, GameRow]:
-    # lock the game row so two guesses at the same moment are handled one at a time
+def join_game(session: Session, user: UserRow, game_id: UUID) -> GameRow:
+    """Add the user to a game's players. Joining a game you are already in changes nothing."""
+    # Lock the game row, so two people joining at the same moment are handled one at a time
+    # and the player limit can't be passed.
     game = session.get(GameRow, game_id, with_for_update=True)
     if game is None:
         raise GameNotFound(f"Game {game_id} not found")
+    if _is_player(game, user):
+        return game
+    if len(game.players) >= MAX_PLAYERS_PER_GAME:
+        raise GameFull(f"This game already has {MAX_PLAYERS_PER_GAME} players")
+
+    game.players.append(user)
+    session.commit()
+    return game
+
+
+def submit_guess(
+    session: Session, user: UserRow, game_id: UUID, word: str
+) -> tuple[GuessRow, GameRow]:
+    # lock the game row so two guesses at the same moment are handled one at a time;
+    # with several players this is what keeps the shared guess limit from being passed
+    game = session.get(GameRow, game_id, with_for_update=True)
+    if game is None:
+        raise GameNotFound(f"Game {game_id} not found")
+    _require_player(game, user)
     if game.status != GameStatus.in_progress.value:
         raise GameOver("This game is already over")
 
@@ -72,10 +115,20 @@ def submit_guess(
     if not lookup.is_valid(session, word):
         raise InvalidGuess(f"'{word}' is not in the word list")
 
-    guess = GuessRow(number=len(game.guesses) + 1, word=word)
+    # any player may take the next turn; the guesses are numbered across all players
+    guess = GuessRow(number=len(game.guesses) + 1, word=word, user=user)
     game.guesses.append(guess)
     game.status = next_status(
         len(game.guesses), game.max_guesses, word == game.answer
     ).value
     session.commit()
     return guess, game
+
+
+def _is_player(game: GameRow, user: UserRow) -> bool:
+    return any(player.id == user.id for player in game.players)
+
+
+def _require_player(game: GameRow, user: UserRow) -> None:
+    if not _is_player(game, user):
+        raise NotAPlayer("You are not a player in this game")
