@@ -8,3 +8,6 @@ class GameOver(Exception):
 
 class InvalidGuess(Exception):
     pass
+
+class NoWordsAvailable(Exception):
+    pass

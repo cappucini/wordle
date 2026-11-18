@@ -11,7 +11,11 @@ def random_answer(session: Session, length: int) -> str:
         .order_by(func.random())
         .limit(1)
     )
-    return session.execute(query).scalar_one()
+    answer = session.execute(query).scalar_one_or_none()
+    if answer is None:
+        raise NoWordsAvailable(f"No {length}-letter answer words are loaded")
+    return answer
+
 
 
 def is_valid(session: Session, word: str) -> bool:
