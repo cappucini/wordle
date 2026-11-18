@@ -32,7 +32,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app import game_service
@@ -49,8 +49,14 @@ router = APIRouter(prefix="/api/v1/games", tags=["games"])
 
 
 @router.get("", response_model=list[GameResponse])
-def read_games(session: Session = Depends(get_session)):
-    return [GameResponse.from_row(game) for game in game_service.list_games(session)]
+def read_games(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: Session = Depends(get_session),
+):
+    # newest first, paged with ?limit= and ?offset= so the response can't grow without bound
+    games = game_service.list_games(session, limit=limit, offset=offset)
+    return [GameResponse.from_row(game) for game in games]
 
 
 @router.post("", status_code=201, response_model=GameResponse)

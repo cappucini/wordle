@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.db import GameRow, GuessRow
 from app.domain.errors import GameNotFound, GameOver, InvalidGuess
@@ -27,8 +27,17 @@ def get_game(session: Session, game_id: UUID) -> GameRow:
     return game
 
 
-def list_games(session: Session) -> list[GameRow]:
-    return list(session.scalars(select(GameRow).order_by(GameRow.created_at.desc())))
+def list_games(session: Session, limit: int = 50, offset: int = 0) -> list[GameRow]:
+    """Newest games first, one page at a time."""
+    query = (
+        select(GameRow)
+        # load every listed game's guesses in one extra query, not one query per game
+        .options(selectinload(GameRow.guesses))
+        .order_by(GameRow.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(session.scalars(query))
 
 
 def submit_guess(
