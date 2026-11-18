@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.config import router as config_router
@@ -9,7 +11,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from app.words.seed import seed_words_if_empty
 
-from app.domain.errors import GameNotFound, GameOver, InvalidGuess
+from app.domain.errors import GameNotFound, GameOver, InvalidGuess, NoWordsAvailable
 from fastapi.exceptions import RequestValidationError
 
 @asynccontextmanager
@@ -25,7 +27,18 @@ app = FastAPI(lifespan=lifespan)
 ROUTERS = [config_router, games_router]
 # register router with the app
 for router in ROUTERS:
+    # attach API routes defined in router files
     app.include_router(router)
+
+# Then, registers multiple exception handlers of what to do for each error type
+
+# Handler that manages what happens if words table is empty, words are cleared by hands while server is running (TRUNCATE Words);
+# or answers_N.txt file is empty or missing
+@app.exception_handler(NoWordsAvailable)
+def handle_no_words(request: Request, exc: NoWordsAvailable):
+    return JSONResponse(
+        status_code=503, content={"code": "NO_WORDS_AVAILABLE", "detail": str(exc)}
+    )
 
 # Additional handler that replaes built-in validation error response with my own
 # every error will have {"code": ..., "detail": "text"} so frontend can parse easier
@@ -33,6 +46,9 @@ for router in ROUTERS:
 def handle_validation_error(request: Request, exc: RequestValidationError):
     first_error = exc.errors()[0]
     field = first_error["loc"][-1]          # the field name, such as "word_length"
+    if not isinstance(field, str):
+        # malformed JSON reports a character position here instead of a field name
+        field = "body"
     message = first_error["msg"]            # such as "Input should be less than or equal to 8"
     return JSONResponse(
         status_code=422,
@@ -60,10 +76,23 @@ def handle_invalid_guess(request: Request, exc: InvalidGuess):
     )
 
 
-# Configure CORS
+# Configure CORS to let frontend's address call the API.
+# Vite serves the frontend on port 5173, and moves to 5174 when 5173 is already in use;
+# the page can also be opened as 127.0.0.1 instead of localhost. All four are allowed by default.
+# Set CORS_ORIGINS (comma-separated) to allow a different frontend address.
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173,http://127.0.0.1:5173,"
+    "http://localhost:5174,http://127.0.0.1:5174"
+)
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
