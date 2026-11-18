@@ -40,13 +40,26 @@ class UserRow(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     username: Mapped[str] = mapped_column(String(30), unique=True)
+    # never the password itself: a salted scrypt hash (see app/security.py)
+    password_hash: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    games: Mapped[list["GameRow"]] = relationship(
-        back_populates="owner", order_by="GameRow.created_at"
+
+class AuthSessionRow(Base):
+    """One sign-in. The browser holds the token; only its hash is stored here."""
+
+    __tablename__ = "auth_sessions"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["UserRow"] = relationship()
 
 
 class WordRow(Base):
@@ -78,7 +91,12 @@ class GameRow(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
-    owner: Mapped["UserRow | None"] = relationship(back_populates="games")  # new
+    # who created the game
+    owner: Mapped["UserRow | None"] = relationship()
+    # everyone playing it, the owner included; goes through the game_players table
+    players: Mapped[list["UserRow"]] = relationship(
+        secondary="game_players", order_by="GamePlayerRow.joined_at"
+    )
     guesses: Mapped[list["GuessRow"]] = relationship(
         order_by="GuessRow.number", cascade="all, delete-orphan"
     )
@@ -97,17 +115,20 @@ class GuessRow(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    # who made this guess
     user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+
+    user: Mapped["UserRow | None"] = relationship()
 
 
 class GamePlayerRow(Base):
+    """Which users are in which game. One row per player per game."""
+
     __tablename__ = "game_players"
 
+    # both columns together are the primary key, so a user can only be in a game once
     game_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("games.id"), primary_key=True)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
-    status: Mapped[str] = mapped_column(
-        String(20), default=GameStatus.in_progress.value
-    )
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

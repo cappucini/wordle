@@ -14,3 +14,26 @@ class InvalidGuess(Exception):
 
 class NoWordsAvailable(Exception):
     pass
+
+
+# --- accounts and multiplayer ---
+
+
+class NotAuthenticated(Exception):
+    """No valid sign-in was sent with the request."""
+
+
+class InvalidCredentials(Exception):
+    """Wrong username or password."""
+
+
+class UsernameTaken(Exception):
+    pass
+
+
+class NotAPlayer(Exception):
+    """The signed-in user is not one of this game's players."""
+
+
+class GameFull(Exception):
+    pass

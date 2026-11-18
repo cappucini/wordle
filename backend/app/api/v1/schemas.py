@@ -46,17 +46,57 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domain.rules import (
     DEFAULT_WORD_LENGTH,
+    MAX_PASSWORD_LENGTH,
+    MAX_PLAYERS_PER_GAME,
+    MAX_USERNAME_LENGTH,
     MAX_WORD_LENGTH,
+    MIN_PASSWORD_LENGTH,
+    MIN_USERNAME_LENGTH,
     MIN_WORD_LENGTH,
+    USERNAME_PATTERN,
     WORD_PATTERN,
     GameStatus,
     LetterResult,
 )
 from app.domain.scoring import score
+
+
+# Used for both creating an account and signing in.
+class CredentialsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(
+        min_length=MIN_USERNAME_LENGTH,
+        max_length=MAX_USERNAME_LENGTH,
+        pattern=USERNAME_PATTERN,
+    )
+    password: str = Field(min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH)
+
+    # usernames are not case-sensitive: "Erica" and "erica" are the same account
+    @field_validator("username", mode="before")
+    @classmethod
+    def normalise_username(cls, value):
+        return value.strip().lower() if isinstance(value, str) else value
+
+
+# What other people may see about a user. The password hash is never included.
+class UserResponse(BaseModel):
+    id: UUID
+    username: str
+
+    @classmethod
+    def from_row(cls, user) -> "UserResponse":
+        return cls(id=user.id, username=user.username)
+
+
+class AuthResponse(BaseModel):
+    user: UserResponse
+    # the browser sends this back as "Authorization: Bearer <token>" on later requests
+    token: str
 
 
 class CreateGameRequest(BaseModel):
@@ -81,11 +121,15 @@ class GuessResponse(BaseModel):
     number: int
     word: str
     results: list[LetterResult]
+    guessed_by: str | None = None  # username of the player who made this guess
 
     @classmethod
     def from_row(cls, guess, answer: str) -> "GuessResponse":
         return cls(
-            number=guess.number, word=guess.word, results=score(guess.word, answer)
+            number=guess.number,
+            word=guess.word,
+            results=score(guess.word, answer),
+            guessed_by=guess.user.username if guess.user is not None else None,
         )
 
 
@@ -98,11 +142,17 @@ class GameResponse(BaseModel):
     guesses: list[GuessResponse]
     answer: str | None = None  # only revealed once the game is over
     created_at: datetime
+    owner_id: UUID | None = None
+    players: list[UserResponse]  # everyone in the game, in the order they joined
+    max_players: int
 
     @classmethod
     def from_row(cls, game) -> "GameResponse":
         is_over = game.status != GameStatus.in_progress
         return cls(
+            owner_id=game.owner_id,
+            players=[UserResponse.from_row(player) for player in game.players],
+            max_players=MAX_PLAYERS_PER_GAME,
             id=game.id,
             word_length=game.word_length,
             max_guesses=game.max_guesses,
@@ -134,6 +184,7 @@ class GuessCreatedResponse(GuessResponse):
             number=guess.number,
             word=guess.word,
             results=score(guess.word, game.answer),
+            guessed_by=guess.user.username if guess.user is not None else None,
             game_status=game.status,
             guesses_remaining=game.max_guesses - len(game.guesses),
             answer=game.answer if is_over else None,
