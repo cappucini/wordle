@@ -36,9 +36,11 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app import game_service
+from app.api.v1.pagination import decode_cursor, encode_cursor
 from app.api.v1.schemas import (
     CreateGameRequest,
     CreateGuessRequest,
+    GameListResponse,
     GameResponse,
     GuessCreatedResponse,
     GuessResponse,
@@ -48,15 +50,26 @@ from app.db import get_session
 router = APIRouter(prefix="/api/v1/games", tags=["games"])
 
 
-@router.get("", response_model=list[GameResponse])
+@router.get("", response_model=GameListResponse)
 def read_games(
-    limit: int = Query(default=50, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+    cursor: str | None = Query(default=None),
     session: Session = Depends(get_session),
 ):
-    # newest first, paged with ?limit= and ?offset= so the response can't grow without bound
-    games = game_service.list_games(session, limit=limit, offset=offset)
-    return [GameResponse.from_row(game) for game in games]
+    # Newest first, one page at a time. The first request has no cursor; each response carries
+    # next_cursor, which the client sends back as ?cursor= to get the following page.
+    after = decode_cursor(cursor) if cursor is not None else None
+    games, has_more = game_service.list_games(session, limit=limit, after=after)
+
+    next_cursor = None
+    if has_more:
+        last_game = games[-1]
+        next_cursor = encode_cursor(last_game.created_at, last_game.id)
+
+    return GameListResponse(
+        items=[GameResponse.from_row(game) for game in games],
+        next_cursor=next_cursor,
+    )
 
 
 @router.post("", status_code=201, response_model=GameResponse)

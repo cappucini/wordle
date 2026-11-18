@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.config import router as config_router
 from app.api.v1.games import router as games_router
+from app.api.v1.pagination import InvalidCursor
 
 from contextlib import asynccontextmanager
 from app.db import create_tables, SessionLocal
@@ -38,6 +39,13 @@ for router in ROUTERS:
 def handle_no_words(request: Request, exc: NoWordsAvailable):
     return JSONResponse(
         status_code=503, content={"code": "NO_WORDS_AVAILABLE", "detail": str(exc)}
+    )
+
+# A ?cursor= value on the games list that this server didn't produce
+@app.exception_handler(InvalidCursor)
+def handle_invalid_cursor(request: Request, exc: InvalidCursor):
+    return JSONResponse(
+        status_code=422, content={"code": "INVALID_CURSOR", "detail": str(exc)}
     )
 
 # Additional handler that replaes built-in validation error response with my own

@@ -1,6 +1,7 @@
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session, selectinload
 
 from app.db import GameRow, GuessRow
@@ -27,17 +28,32 @@ def get_game(session: Session, game_id: UUID) -> GameRow:
     return game
 
 
-def list_games(session: Session, limit: int = 50, offset: int = 0) -> list[GameRow]:
-    """Newest games first, one page at a time."""
+def list_games(
+    session: Session,
+    limit: int = 20,
+    after: tuple[datetime, UUID] | None = None,
+) -> tuple[list[GameRow], bool]:
+    """One page of games, newest first.
+
+    `after` is the (created_at, id) of the last game on the previous page; the page returned
+    starts with the next game after it. Returns the games and whether more remain.
+    """
     query = (
         select(GameRow)
         # load every listed game's guesses in one extra query, not one query per game
         .options(selectinload(GameRow.guesses))
-        .order_by(GameRow.created_at.desc())
-        .limit(limit)
-        .offset(offset)
+        # id breaks the tie when two games share a created_at, so the order is always the same
+        .order_by(GameRow.created_at.desc(), GameRow.id.desc())
+        # ask for one extra row: if it comes back, there is another page
+        .limit(limit + 1)
     )
-    return list(session.scalars(query))
+    if after is not None:
+        # "older than the last game seen": compares (created_at, id) as a pair
+        query = query.where(tuple_(GameRow.created_at, GameRow.id) < after)
+
+    games = list(session.scalars(query))
+    has_more = len(games) > limit
+    return games[:limit], has_more
 
 
 def submit_guess(

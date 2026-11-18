@@ -116,6 +116,12 @@ class GameResponse(BaseModel):
         )
 
 
+class GameListResponse(BaseModel):
+    items: list[GameResponse]
+    # send this back as ?cursor= to get the next page; null when there are no more games
+    next_cursor: str | None = None
+
+
 class GuessCreatedResponse(GuessResponse):
     game_status: GameStatus
     guesses_remaining: int

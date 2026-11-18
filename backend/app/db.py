@@ -61,6 +61,9 @@ class WordRow(Base):
 
 class GameRow(Base):
     __tablename__ = "games"
+    # the games list is sorted and paged by (created_at, id); this index lets the
+    # database jump straight to a cursor's position instead of scanning the table
+    __table_args__ = (Index("ix_games_created_at_id", "created_at", "id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     owner_id: Mapped[uuid.UUID | None] = mapped_column(
