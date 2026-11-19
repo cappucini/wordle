@@ -1,7 +1,9 @@
 """Build the word-list files for 6, 7 and 8-letter games.
 
-The 5-letter files are NOT built here. They are the original Wordle lists, copied in as they
-are (see "Word Lists" in the README), and this script leaves them alone.
+The 5-letter files are NOT built here. They are the original Wordle lists (its answers, and
+its other accepted guesses), copied in as published with nothing added or removed. See
+"Word Lists" in the README. This script leaves them alone, and none of the filtering below
+(plurals, names) is applied to them.
 
 For the longer lengths, where no official list exists:
 

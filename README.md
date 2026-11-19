@@ -225,6 +225,8 @@ The game uses two word lists for each word length (5 to 8 letters), stored in `b
 - `valid_N.txt` - every N-letter word accepted as a guess (this includes the answers)
 - `answers_N.txt` - the smaller set of familiar words that can be chosen as a game's answer
 
+A guess is accepted only if it is in `valid_N.txt`; anything else is refused with "not in the word list". A game's answer is always picked from `answers_N.txt`.
+
 These files are committed to the repository and loaded into the database automatically when the backend starts. **You do not need to rebuild them to run the app.**
 
 | Length | Answers | Accepted guesses | Where they come from |
@@ -245,6 +247,8 @@ The 5-letter files are the two lists from the original Wordle game: its 2,315 an
 
 Things to know about these lists:
 
+- **Nothing has been added or removed.** The decision was to use the official lists as they are rather than a cleaned-up copy, and a unit test fails if they are edited.
+- **Plurals:** no answer is a plural made by adding "s" or "es"; those words (`cakes`, `boxes`) are accepted as guesses only. Seven irregular plurals are answers, as they were in the original game: `geese`, `teeth`, `women`, `fungi`, `cacti`, `radii` and `algae`. Read strictly, that is the one place the game departs from rule 4 above ("Answers are never plural").
 - They are the lists as the original game shipped them. The New York Times, which now owns Wordle, has since removed some words (for example `slave`, `lynch` and `wench`) and no longer picks answers from a fixed list. Those words are still answers here.
 - Wordle and its word lists belong to The New York Times. They are used here for a coursework assessment; check the position before using them in anything public or commercial.
 - There is no official list for 6, 7 or 8 letters, which is why those lengths are built differently.
@@ -314,13 +318,13 @@ Run these from the repository root.
 
 | Command | What it runs | Tests | Takes about |
 |---|---|---|---|
-| `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 258 | 2 s |
+| `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 261 | 2 s |
 | `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 252 | 4 s |
 | `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres. | 175 | 9 s |
 | `make test-security` | Security tests: sign-in and CSRF on every route, who may open the WebSocket, log-in and sign-up limits, hashed secrets, game access, the hidden answer, hostile input. | 221 | 19 s |
 | `make test-concurrency` | Race tests: joins, guesses and sign-ups sent at the same instant. | 8 | 5 s |
 | `make test-e2e` | End-to-end tests: headless Chromium driving the real frontend and backend through seven user journeys. | 7 | 20 s |
-| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 921 | 60 s |
+| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 924 | 60 s |
 
 The first run of a layer is slower, because Docker builds its image.
 

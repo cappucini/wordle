@@ -77,8 +77,8 @@ def test_read_words_of_an_empty_file_is_empty(tmp_path):
 
 
 # ---------- the 5-letter lists are the original Wordle lists ----------
-# They are copied in, not generated (see the README). These checks catch them being
-# regenerated, truncated or edited by accident.
+# They are copied in exactly as published, not generated and not edited (see the README).
+# These checks catch them being regenerated, truncated or "tidied up" by accident.
 
 
 def test_five_letter_answers_are_the_original_wordle_answers():
@@ -113,3 +113,35 @@ def test_word_file_is_sorted_and_ends_with_a_line_break(file_name):
 
     assert text.endswith("\n")
     assert words == sorted(words)
+
+
+def test_five_letter_answers_are_left_exactly_as_the_original_game_had_them():
+    # The original list has no plurals made by adding "s", but it does include a few
+    # irregular ones, and words the New York Times later withdrew. They are kept on purpose:
+    # the decision was to use the official list unchanged, not a cleaned-up copy of it.
+    answers = lines_of("answers_5.txt")
+
+    for word in ["geese", "teeth", "women", "fungi", "cacti", "radii", "algae"]:
+        assert word in answers
+    for word in ["slave", "lynch", "wench"]:
+        assert word in answers
+
+
+def test_no_five_letter_answer_is_a_plural_made_by_adding_s():
+    # every answer ending in "s" is one of these, and none of them is a plural
+    ending_in_s = [word for word in lines_of("answers_5.txt") if word.endswith("s")]
+    not_double_s = sorted(word for word in ending_in_s if not word.endswith("ss"))
+
+    assert not_double_s == [
+        "basis", "bonus", "chaos", "ethos", "fetus", "ficus", "focus", "humus",
+        "locus", "lupus", "minus", "mucus", "rebus", "torus", "virus",
+    ]
+
+
+def test_plurals_are_accepted_as_guesses_but_are_not_answers():
+    answers = lines_of("answers_5.txt")
+    valid = lines_of("valid_5.txt")
+
+    for word in ["cakes", "boxes", "foxes"]:
+        assert word in valid
+        assert word not in answers

@@ -5,6 +5,12 @@ from app.db import WordRow
 from app.domain.errors import NoWordsAvailable
 
 
+# The two questions the game asks of the word lists (loaded into the `words` table by seed.py):
+#   - random_answer: pick a game's answer, from the smaller list of answer words only
+#   - is_valid: may this word be guessed? Any word on the accepted-guesses list may, which
+#     includes plurals and obscure words that are never chosen as an answer.
+
+
 def random_answer(session: Session, length: int) -> str:
     query = (
         select(WordRow.text)
