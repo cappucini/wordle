@@ -2,6 +2,8 @@
 // for the session cookie: the browser treats "localhost" and "127.0.0.1" as different sites,
 // and only sends the cookie when the page and the API are on the same one.
 const API_URL = 'http://' + window.location.hostname + ':8000/api/v1'
+// the same backend, for the WebSocket that reports changes to a game
+const SOCKET_URL = 'ws://' + window.location.hostname + ':8000/api/v1'
 
 // ---- how the page stays signed in ----
 // The session itself is a cookie that only the browser and the backend can see; JavaScript
@@ -127,6 +129,20 @@ export function listGames(cursor) {
 // Safe to call for a game you are already in.
 export function joinGame(gameId) {
   return sendRequest('POST', '/games/' + gameId + '/players')
+}
+
+// Opens the WebSocket on which the backend announces changes to a game (another player's
+// guess, a player joining). Each announcement is just { "type": "game_updated" }: the page
+// then fetches the game with getGame, so the game's data only ever comes from one place.
+// The browser sends the session cookie with the connection by itself.
+//
+// If the backend refuses the connection it closes it with one of these codes.
+export const SOCKET_CLOSED_NOT_AUTHENTICATED = 4401
+export const SOCKET_CLOSED_NOT_A_PLAYER = 4403
+export const SOCKET_CLOSED_GAME_NOT_FOUND = 4404
+
+export function openGameSocket(gameId) {
+  return new WebSocket(SOCKET_URL + '/games/' + gameId + '/ws')
 }
 
 // ---- accounts ----

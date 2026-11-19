@@ -1,10 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createGame, getConfig, getGame, joinGame, listGames, submitGuess } from '../api'
+import {
+  SOCKET_CLOSED_GAME_NOT_FOUND,
+  SOCKET_CLOSED_NOT_A_PLAYER,
+  SOCKET_CLOSED_NOT_AUTHENTICATED,
+  createGame,
+  getConfig,
+  getGame,
+  joinGame,
+  listGames,
+  openGameSocket,
+  submitGuess,
+} from '../api'
 import { errorText } from '../errorText'
 import { clearGameIdFromUrl, getGameIdFromUrl, setGameIdInUrl } from '../gameUrl'
 
-// how often a game in progress is checked for the other players' guesses
-const POLL_INTERVAL_MS = 3000
+// If the connection that reports other players' guesses drops, the page reconnects:
+// after 1 second, then 2, 4, 8, and at most every 10 seconds after that.
+const FIRST_RECONNECT_DELAY_MS = 1000
+const LONGEST_RECONNECT_DELAY_MS = 10000
+
+// close codes after which reconnecting is pointless: the backend refused on purpose
+const REFUSED = [SOCKET_CLOSED_NOT_AUTHENTICATED, SOCKET_CLOSED_NOT_A_PLAYER, SOCKET_CLOSED_GAME_NOT_FOUND]
 
 // Holds everything the game screen needs to know, and the actions that change it.
 // Components only display what this returns; they never call the API themselves.
@@ -141,20 +157,27 @@ export function useGame() {
     showGameFromUrl()
   }
 
-  // While a game is in progress, check the server every few seconds for guesses made by the
-  // other players, so a shared board updates without anyone refreshing.
+  // While a game is in progress, keep a WebSocket open to the server. The server sends a
+  // short notice on it whenever the game changes (another player guessed, or joined), and
+  // the page then fetches the game, so a shared board updates without anyone refreshing.
   const gameId = game !== null ? game.id : null
   const isInProgress = game !== null && game.status === 'in_progress'
   useEffect(() => {
     if (gameId === null || !isInProgress) {
       return
     }
-    const timer = setInterval(() => {
-      if (document.hidden) {
-        return // don't poll from a tab nobody is looking at
-      }
+    let socket = null
+    let reconnectTimer = null
+    let failedAttempts = 0
+    let isFinished = false // set when this game is no longer on screen, or has ended
+
+    // Fetch the game and show it if it has anything new.
+    function fetchLatest() {
       getGame(gameId)
         .then((latest) => {
+          if (isFinished) {
+            return
+          }
           setGame((current) => {
             if (current === null || current.id !== latest.id) {
               return current // the player has moved to a different game meanwhile
@@ -171,11 +194,44 @@ export function useGame() {
           }
         })
         .catch(() => {
-          // a missed check is harmless; the next one will catch up
+          // a missed update is harmless; the next notice, or the next reconnect, catches up
         })
-    }, POLL_INTERVAL_MS)
-    // stop the timer when the game changes or ends, so there is never more than one
-    return () => clearInterval(timer)
+    }
+
+    function connect() {
+      socket = openGameSocket(gameId)
+      socket.onopen = () => {
+        failedAttempts = 0
+        // anything that happened while there was no connection was not announced, so look now
+        fetchLatest()
+      }
+      socket.onmessage = () => fetchLatest()
+      socket.onclose = (event) => {
+        if (isFinished) {
+          return // we closed it ourselves
+        }
+        if (REFUSED.includes(event.code)) {
+          if (event.code === SOCKET_CLOSED_NOT_AUTHENTICATED) {
+            // The sign-in has ended. This request gets the same answer, and api.js then
+            // takes the page back to the sign-in form.
+            fetchLatest()
+          }
+          return
+        }
+        // dropped (the server restarted, or the network blinked): try again, a little later each time
+        const delay = Math.min(FIRST_RECONNECT_DELAY_MS * 2 ** failedAttempts, LONGEST_RECONNECT_DELAY_MS)
+        failedAttempts += 1
+        reconnectTimer = setTimeout(connect, delay)
+      }
+    }
+
+    connect()
+    // close the connection when the game changes or ends, so there is never more than one
+    return () => {
+      isFinished = true
+      clearTimeout(reconnectTimer)
+      socket.close()
+    }
   }, [gameId, isInProgress, refreshGames])
 
   async function startGame() {
