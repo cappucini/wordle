@@ -113,3 +113,63 @@ def test_keys_whose_attempts_have_all_expired_are_forgotten():
     limiter.record("erica")  # any activity sweeps out what has expired
 
     assert limiter.tracked_keys() == 1
+
+
+# ---------- attempt(): check and count in one step ----------
+
+
+def test_attempt_counts_itself_when_allowed():
+    limiter, _ = make_limiter(max_attempts=2)
+
+    assert limiter.attempt("erica") == 0
+    assert limiter.attempt("erica") == 0
+
+    assert limiter.attempt("erica") > 0
+
+
+def test_a_refused_attempt_is_not_counted():
+    # otherwise someone who keeps trying while blocked would never be let back in
+    limiter, clock = make_limiter(max_attempts=1, window_seconds=60)
+    limiter.attempt("erica")
+    for _ in range(50):
+        assert limiter.attempt("erica") > 0
+
+    clock.advance(60)
+
+    assert limiter.attempt("erica") == 0
+
+
+def test_attempts_made_at_the_same_instant_cannot_exceed_the_limit():
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    limiter, _ = make_limiter(max_attempts=10)
+    start = threading.Barrier(40)
+
+    def attempt(_):
+        start.wait(timeout=10)
+        return limiter.attempt("erica")
+
+    with ThreadPoolExecutor(40) as pool:
+        results = list(pool.map(attempt, range(40)))
+
+    assert results.count(0) == 10
+
+
+def test_forgive_takes_back_the_latest_attempt():
+    limiter, _ = make_limiter(max_attempts=2)
+    limiter.attempt("erica")
+    limiter.attempt("erica")
+    assert limiter.attempt("erica") > 0
+
+    limiter.forgive("erica")
+
+    assert limiter.attempt("erica") == 0
+
+
+def test_forgive_with_nothing_counted_does_nothing():
+    limiter, _ = make_limiter()
+
+    limiter.forgive("erica")
+
+    assert limiter.attempt("erica") == 0

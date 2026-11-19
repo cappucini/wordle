@@ -5,8 +5,10 @@
 const GAME_PARAM = 'game'
 
 // Returns the game ID in the address bar, or null if there isn't one.
+// An address ending in "?game=" names no game, so it counts as not having one.
 export function getGameIdFromUrl() {
-  return new URLSearchParams(window.location.search).get(GAME_PARAM)
+  const gameId = new URLSearchParams(window.location.search).get(GAME_PARAM)
+  return gameId === null || gameId === '' ? null : gameId
 }
 
 // Puts a game ID in the address bar without reloading the page.

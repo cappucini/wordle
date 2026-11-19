@@ -13,6 +13,7 @@ from starlette.websockets import WebSocketDisconnect
 from tests.support import API, put_session_cookie
 
 NOT_AUTHENTICATED = 4401
+TOO_MANY_CONNECTIONS = 4429
 NOT_A_PLAYER = 4403
 GAME_NOT_FOUND = 4404
 POLICY_VIOLATION = 1008
@@ -105,6 +106,90 @@ def test_outsider_is_not_told_about_guesses(player, other_player):
 
     # a refused connection is never added to the game's watchers
     assert watchers.count(UUID(game["id"])) == 0
+
+
+# ---------- a connection does not outlive its sign-in ----------
+
+
+def test_logging_out_closes_the_players_open_connection(player, new_client):
+    game = player.create_game()
+    page = player.in_another_browser(new_client())  # the same sign-in, in another tab
+
+    with pytest.raises(WebSocketDisconnect) as closed:
+        with page.watch(game["id"]) as socket:
+            player.delete("/sessions/current")
+            socket.receive_json()
+
+    assert closed.value.code == NOT_AUTHENTICATED
+
+
+def test_logging_out_leaves_other_players_connected(player, other_player):
+    game = player.create_game()
+    other_player.join(game["id"])
+
+    with other_player.watch(game["id"]) as socket:
+        player.delete("/sessions/current")
+        other_player.guess(game["id"], "slate")
+
+        assert socket.receive_json() == {"type": "game_updated"}
+
+
+def test_connection_is_closed_once_its_session_has_expired(player, other_player, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from app.live import watchers
+
+    game = player.create_game()
+    other_player.join(game["id"])
+
+    with pytest.raises(WebSocketDisconnect) as closed:
+        with player.watch(game["id"]) as socket:
+            # eight days pass; the sign-in lasted seven
+            later = datetime.now(timezone.utc) + timedelta(days=8)
+            monkeypatch.setattr(watchers, "now", lambda: later)
+            other_player.guess(game["id"], "slate")
+            socket.receive_json()
+
+    assert closed.value.code == NOT_AUTHENTICATED
+
+
+# ---------- how many connections one player may hold ----------
+
+
+def test_a_player_can_hold_ten_connections_and_the_eleventh_is_refused(player):
+    game = player.create_game()
+    open_sockets = []
+    try:
+        for _ in range(10):
+            socket = player.watch(game["id"])
+            socket.__enter__()
+            open_sockets.append(socket)
+
+        assert close_code(lambda: player.watch(game["id"])) == TOO_MANY_CONNECTIONS
+    finally:
+        for socket in open_sockets:
+            socket.__exit__(None, None, None)
+
+    # and once those are closed there is room again
+    with player.watch(game["id"]):
+        pass
+
+
+def test_one_players_connections_do_not_use_up_another_players(player, other_player):
+    game = player.create_game()
+    other_player.join(game["id"])
+    open_sockets = []
+    try:
+        for _ in range(10):
+            socket = player.watch(game["id"])
+            socket.__enter__()
+            open_sockets.append(socket)
+
+        with other_player.watch(game["id"]):
+            pass
+    finally:
+        for socket in open_sockets:
+            socket.__exit__(None, None, None)
 
 
 # ---------- which website is asking ----------

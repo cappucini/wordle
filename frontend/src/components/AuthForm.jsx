@@ -134,6 +134,9 @@ function checkInputs(username, password, isCreating) {
   if (password.length < 8) {
     return 'Passwords need at least 8 characters.'
   }
+  if (password.length > 128) {
+    return 'Passwords can be at most 128 characters.'
+  }
   return ''
 }
 

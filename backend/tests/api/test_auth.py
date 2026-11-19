@@ -304,6 +304,51 @@ def test_logging_in_leaves_other_users_sessions_alone(player, other_player, new_
     assert db.query(AuthSessionRow).filter_by(user_id=other.id).count() == 1
 
 
+def test_signing_in_again_in_the_same_browser_ends_the_session_it_replaces(player, new_client):
+    copy_of_old_session = player.in_another_browser(new_client())
+    assert copy_of_old_session.get("/users/me").status_code == 200
+
+    # the browser still holds the old cookie when it logs in again
+    response = player.client.post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+
+    assert response.status_code == 201
+    assert player.client.get(f"{API}/users/me").status_code == 200  # the new session works
+    assert copy_of_old_session.get("/users/me").status_code == 401  # the old one is gone
+
+
+def test_signing_up_in_a_browser_that_is_signed_in_ends_that_session(player, new_client):
+    copy_of_old_session = player.in_another_browser(new_client())
+
+    response = player.client.post(
+        f"{API}/users", json={"username": "second_account", "password": PASSWORD}
+    )
+
+    assert response.status_code == 201
+    assert player.client.get(f"{API}/users/me").json()["user"]["username"] == "second_account"
+    assert copy_of_old_session.get("/users/me").status_code == 401
+
+
+def test_a_failed_log_in_does_not_end_the_session_already_in_the_browser(player):
+    response = player.client.post(
+        f"{API}/sessions", json={"username": player.username, "password": "wrong password"}
+    )
+
+    assert response.status_code == 401
+    assert player.get("/users/me").status_code == 200
+
+
+def test_logging_in_elsewhere_does_not_end_other_sessions(player, new_client):
+    # a second device has no cookie to replace, so the first stays signed in
+    second_device = new_client()
+    second_device.post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+
+    assert player.get("/users/me").status_code == 200
+
+
 # ---------- log out ----------
 
 

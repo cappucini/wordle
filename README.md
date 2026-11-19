@@ -130,7 +130,13 @@ ws://localhost:8000/api/v1/games/{game_id}/ws
   (the addresses in `CORS_ORIGINS`). A refused connection is closed with code `4401` (not
   signed in), `4403` (not a player) or `4404` (no such game).
 - If the connection drops, the page reconnects after 1 second, then 2, 4, 8 and at most
-  every 10 seconds, and checks for anything it missed as soon as it is back.
+  every 10 seconds, and checks for anything it missed as soon as it is back. While there is
+  no connection (including on networks that block WebSockets) it asks the backend every
+  5 seconds instead, so a shared board still updates.
+- A connection ends with its sign-in: it is closed with `4401` when the player logs out or
+  the session expires.
+- One player may hold 10 connections at once (about ten tabs). An eleventh is closed with
+  `4429`, and that tab uses the 5-second check.
 - The list of connected pages is kept in the backend's memory, which is right for the single
   backend process this project runs. Running several backend processes would need a shared
   channel (for example Postgres `LISTEN`/`NOTIFY`) so a guess handled by one reaches pages
@@ -146,8 +152,10 @@ answers `429 TOO_MANY_ATTEMPTS` (with a `Retry-After` header) once a limit is re
 | Wrong passwords for one username | 10 |
 | Wrong passwords from one network address, across all usernames | 30 |
 | Accounts created from one network address | 20 |
+| Sign-ups refused because the username was taken, from one network address | 30 |
 
-A successful log-in clears that username's count. The numbers are in
+Each attempt is counted before it is carried out, so the limits also hold when many requests
+arrive at the same instant. A successful log-in clears that username's count. The numbers are in
 `backend/app/domain/rules.py`.
 
 - The counts are kept in the backend's memory, so they reset when it restarts.
@@ -251,13 +259,13 @@ Run these from the repository root.
 
 | Command | What it runs | Tests | Takes about |
 |---|---|---|---|
-| `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 229 | 2 s |
-| `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 218 | 3 s |
-| `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres. | 164 | 9 s |
-| `make test-security` | Security tests: sign-in and CSRF on every route, who may open the WebSocket, log-in and sign-up limits, hashed secrets, game access, the hidden answer, hostile input. | 209 | 17 s |
+| `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 237 | 2 s |
+| `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 234 | 4 s |
+| `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres. | 168 | 9 s |
+| `make test-security` | Security tests: sign-in and CSRF on every route, who may open the WebSocket, log-in and sign-up limits, hashed secrets, game access, the hidden answer, hostile input. | 217 | 17 s |
 | `make test-concurrency` | Race tests: joins, guesses and sign-ups sent at the same instant. | 8 | 5 s |
 | `make test-e2e` | End-to-end tests: headless Chromium driving the real frontend and backend through seven user journeys. | 7 | 20 s |
-| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 835 | 60 s |
+| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 871 | 60 s |
 
 The first run of a layer is slower, because Docker builds its image.
 

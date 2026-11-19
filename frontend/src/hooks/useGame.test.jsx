@@ -670,6 +670,95 @@ describe("useGame: other players' guesses", () => {
       expect(FakeSocket.opened).toHaveLength(1)
     })
 
+    describe('and stays down', () => {
+      // WebSockets blocked by the network, the server restarting, or too many tabs open:
+      // the board must still pick up other players' guesses, just more slowly.
+
+      it('checks for changes every five seconds while there is no connection', async () => {
+        const result = await renderSharedGameWithFakeClock()
+        await latestSocket().serverCloses()
+        api.getGame.mockResolvedValue(WITH_SAMS_GUESS)
+
+        await wait(4999)
+        expect(api.getGame).not.toHaveBeenCalled()
+        await wait(1)
+
+        expect(api.getGame).toHaveBeenCalledWith('game-1')
+        expect(result.current.game.guesses).toHaveLength(1)
+        await wait(5000)
+        expect(api.getGame).toHaveBeenCalledTimes(2)
+      })
+
+      it('goes quiet again once the connection is back', async () => {
+        await renderSharedGameWithFakeClock()
+        await latestSocket().serverCloses()
+        await wait(1000) // reconnects
+        await latestSocket().serverAccepts() // one catch-up check on opening
+        api.getGame.mockClear()
+
+        await wait(60_000)
+
+        expect(api.getGame).not.toHaveBeenCalled()
+      })
+
+      it('checks every five seconds when a connection can never be made at all', async () => {
+        vi.useFakeTimers()
+        api.createGame.mockResolvedValue(SHARED)
+        const { result } = renderHook(() => useGame())
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0)
+        })
+        await act(() => result.current.startGame())
+        api.getGame.mockResolvedValue(WITH_SAMS_GUESS)
+
+        await latestSocket().serverCloses() // refused by the network before it ever opened
+        await wait(5000)
+
+        expect(result.current.game.guesses).toHaveLength(1)
+      })
+
+      it('stops checking when the game is over', async () => {
+        const result = await renderSharedGameWithFakeClock()
+        await latestSocket().serverCloses()
+        api.getGame.mockResolvedValue({ ...SHARED, status: 'lost', answer: 'crane' })
+        await wait(5000)
+        expect(result.current.game.status).toBe('lost')
+        api.getGame.mockClear()
+
+        await wait(60_000)
+
+        expect(api.getGame).not.toHaveBeenCalled()
+      })
+
+      it('stops checking when the page goes away', async () => {
+        vi.useFakeTimers()
+        api.createGame.mockResolvedValue(SHARED)
+        const rendered = renderHook(() => useGame())
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0)
+        })
+        await act(() => rendered.result.current.startGame())
+        await latestSocket().serverCloses()
+        api.getGame.mockClear()
+
+        rendered.unmount()
+        await wait(60_000)
+
+        expect(api.getGame).not.toHaveBeenCalled()
+      })
+
+      it('checks every five seconds, without reconnecting, when the player has too many tabs open', async () => {
+        const result = await renderSharedGameWithFakeClock()
+        api.getGame.mockResolvedValue(WITH_SAMS_GUESS)
+
+        await latestSocket().serverCloses(4429)
+        await wait(30_000)
+
+        expect(FakeSocket.opened).toHaveLength(1) // asking again would only be refused again
+        expect(result.current.game.guesses).toHaveLength(1)
+      })
+    })
+
     it.each([
       [4403, 'not a player in the game'],
       [4404, 'the game does not exist'],

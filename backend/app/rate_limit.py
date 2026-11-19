@@ -42,6 +42,32 @@ class AttemptLimiter:
             # allowed again when the oldest attempt leaves the window
             return max(1, math.ceil(attempts[0] + self.window_seconds - now))
 
+    def attempt(self, key: str) -> int:
+        """Checks and counts in one step.
+
+        Returns 0 and counts the attempt if this key may try now. Otherwise returns how
+        many seconds until it may, and counts nothing.
+
+        Doing both under one lock is what makes the limit hold when many requests arrive at
+        the same instant: checking first and counting afterwards would let all of them
+        through the check before any had been counted.
+        """
+        with self._lock:
+            now = self.clock()
+            attempts = self._still_counting(key, now)
+            if len(attempts) >= self.max_attempts:
+                return max(1, math.ceil(attempts[0] + self.window_seconds - now))
+            attempts.append(now)
+            self._sweep_if_due(now)
+            return 0
+
+    def forgive(self, key: str) -> None:
+        """Takes back the most recent attempt, for one that turned out not to count."""
+        with self._lock:
+            attempts = self._attempts.get(key)
+            if attempts:
+                attempts.pop()
+
     def record(self, key: str) -> None:
         """Count one attempt for this key."""
         with self._lock:

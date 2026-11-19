@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { blurAfterMouseClick } from '../focus'
 
 // Who is in the game, and a button to copy its link for inviting others.
 // A game with one player is a solo game; sharing its link is what makes it a shared one.
@@ -11,7 +10,8 @@ function Players({ game, currentUser }) {
   const canInvite = game.status === 'in_progress' && !isFull
 
   async function copyLink(event) {
-    blurAfterMouseClick(event)
+    // always give up focus, so the Enter that submits the next guess doesn't copy the link again
+    event.currentTarget.blur()
     try {
       // the page address already names this game (?game=<id>), so the address is the invite
       await navigator.clipboard.writeText(window.location.href)

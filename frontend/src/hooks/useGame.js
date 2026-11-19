@@ -5,6 +5,7 @@ import {
   SOCKET_CLOSED_GAME_NOT_FOUND,
   SOCKET_CLOSED_NOT_A_PLAYER,
   SOCKET_CLOSED_NOT_AUTHENTICATED,
+  SOCKET_CLOSED_TOO_MANY_CONNECTIONS,
   createGame,
   getConfig,
   getGame,
@@ -20,6 +21,10 @@ import { clearGameIdFromUrl, getGameIdFromUrl, setGameIdInUrl } from '../gameUrl
 // after 1 second, then 2, 4, 8, and at most every 10 seconds after that.
 const FIRST_RECONNECT_DELAY_MS = 1000
 const LONGEST_RECONNECT_DELAY_MS = 10000
+
+// While there is no connection (it dropped, or the network doesn't allow WebSockets at all),
+// the page falls back to asking the server this often, so a shared board still updates.
+const NO_CONNECTION_CHECK_MS = 5000
 
 // close codes after which reconnecting is pointless: the backend refused on purpose
 const REFUSED = [SOCKET_CLOSED_NOT_AUTHENTICATED, SOCKET_CLOSED_NOT_A_PLAYER, SOCKET_CLOSED_GAME_NOT_FOUND]
@@ -193,6 +198,7 @@ export function useGame() {
     }
     let socket = null
     let reconnectTimer = null
+    let checkTimer = null // set while the fallback timer is running
     let failedAttempts = 0
     let isFinished = false // set when this game is no longer on screen, or has ended
 
@@ -223,10 +229,23 @@ export function useGame() {
         })
     }
 
+    // The fallback for when there is no connection: ask on a timer instead of being told.
+    function startCheckingOnATimer() {
+      if (checkTimer === null) {
+        checkTimer = setInterval(fetchLatest, NO_CONNECTION_CHECK_MS)
+      }
+    }
+
+    function stopCheckingOnATimer() {
+      clearInterval(checkTimer)
+      checkTimer = null
+    }
+
     function connect() {
       socket = openGameSocket(gameId)
       socket.onopen = () => {
         failedAttempts = 0
+        stopCheckingOnATimer() // the server tells us about changes again
         // anything that happened while there was no connection was not announced, so look now
         fetchLatest()
       }
@@ -243,6 +262,11 @@ export function useGame() {
           }
           return
         }
+        // No connection from here on, so keep the board up to date the slow way.
+        startCheckingOnATimer()
+        if (event.code === SOCKET_CLOSED_TOO_MANY_CONNECTIONS) {
+          return // too many tabs open; asking for another connection would be refused again
+        }
         // dropped (the server restarted, or the network blinked): try again, a little later each time
         const delay = Math.min(FIRST_RECONNECT_DELAY_MS * 2 ** failedAttempts, LONGEST_RECONNECT_DELAY_MS)
         failedAttempts += 1
@@ -255,6 +279,7 @@ export function useGame() {
     return () => {
       isFinished = true
       clearTimeout(reconnectTimer)
+      stopCheckingOnATimer()
       socket.close()
     }
   }, [gameId, isInProgress, refreshGames])

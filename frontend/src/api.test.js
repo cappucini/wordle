@@ -176,6 +176,7 @@ describe('api: the live-update connection', () => {
     expect(api.SOCKET_CLOSED_NOT_AUTHENTICATED).toBe(4401)
     expect(api.SOCKET_CLOSED_NOT_A_PLAYER).toBe(4403)
     expect(api.SOCKET_CLOSED_GAME_NOT_FOUND).toBe(4404)
+    expect(api.SOCKET_CLOSED_TOO_MANY_CONNECTIONS).toBe(4429)
   })
 })
 

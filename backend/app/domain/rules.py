@@ -21,6 +21,10 @@ RATE_LIMIT_WINDOW_SECONDS = 5 * 60  # attempts are counted over the last five mi
 MAX_FAILED_LOGINS_PER_USERNAME = 10  # wrong passwords for one account
 MAX_FAILED_LOGINS_PER_ADDRESS = 30  # wrong passwords from one network address, any account
 MAX_SIGNUPS_PER_ADDRESS = 20  # accounts created from one network address
+MAX_REFUSED_SIGNUPS_PER_ADDRESS = 30  # sign-ups refused because the username was taken
+
+# Live updates (see app/live.py)
+MAX_LIVE_CONNECTIONS_PER_USER = 10  # WebSockets one player may hold open: about ten tabs
 
 
 class LetterResult(str, Enum):

@@ -50,6 +50,12 @@ describe('gameUrl', () => {
     expect(getGameIdFromUrl()).toBe('abc-123')
   })
 
+  it('treats an empty game in the address as no game', () => {
+    window.history.replaceState({}, '', '/?game=')
+
+    expect(getGameIdFromUrl()).toBeNull()
+  })
+
   it('puts a game in the address', () => {
     setGameIdInUrl('abc-123')
 

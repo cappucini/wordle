@@ -223,6 +223,49 @@ describe('App: the game screen', () => {
     expect(screen.getAllByRole('img').slice(0, 2).map((tile) => tile.textContent)).toEqual(['c', ''])
   })
 
+  it('lets a keyboard-only player open a game from the list and submit a guess with Enter', async () => {
+    const listed = makeGame({ id: 'game-0' })
+    api.listGames.mockResolvedValue({ items: [listed], next_cursor: null })
+    api.joinGame.mockResolvedValue(listed)
+    api.getGame.mockResolvedValue(listed)
+    await renderSignedIn()
+    const list = await screen.findByRole('region', { name: 'Your games' })
+
+    within(list).getByRole('button').focus()
+    await userEvent.keyboard('{Enter}') // opens the game
+    await screen.findAllByRole('img')
+    await userEvent.keyboard('crane{Enter}') // types a guess and submits it
+
+    expect(api.submitGuess).toHaveBeenCalledExactlyOnceWith('game-0', 'crane')
+  })
+
+  it('does not treat an address ending in "?game=" as an invite', async () => {
+    window.history.replaceState({}, '', '/?game=')
+
+    await renderSignedIn()
+
+    expect(api.joinGame).not.toHaveBeenCalled()
+    expect(screen.getByText(/Pick a word length and start a game/)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+  })
+
+  it("tells the other players who won, not \"You got it\"", async () => {
+    window.history.replaceState({}, '', '/?game=shared')
+    api.joinGame.mockResolvedValue(
+      makeGame({
+        id: 'shared',
+        status: 'won',
+        answer: 'crane',
+        players: [ERICA, { id: 'user-sam', username: 'sam' }],
+        guesses: [makeGuess('crane', 'CCCCC', 'sam')],
+      }),
+    )
+
+    await renderSignedIn()
+
+    expect(await screen.findByText('sam got it in 1 guess!')).toBeInTheDocument()
+  })
+
   it('lists the player\'s games and opens the one clicked', async () => {
     const older = makeGame({ id: 'game-0', word_length: 6, status: 'lost', answer: 'planet' })
     api.listGames.mockResolvedValue({ items: [older], next_cursor: null })

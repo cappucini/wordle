@@ -22,8 +22,13 @@ A refused connection is closed with a code the page can read:
     4401  not signed in (no session, or it has expired)
     4403  signed in, but not a player in this game
     4404  no such game
+    4429  this player already has as many connections open as one player may
+
+An open connection is closed with 4401 when its sign-in is logged out or expires (app/live.py).
 """
 
+from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -41,14 +46,24 @@ router = APIRouter(tags=["games"])
 CLOSE_NOT_AUTHENTICATED = 4401
 CLOSE_NOT_A_PLAYER = 4403
 CLOSE_GAME_NOT_FOUND = 4404
+CLOSE_TOO_MANY_CONNECTIONS = 4429
 # the standard WebSocket code for "this request breaks the rules"
 CLOSE_POLICY_VIOLATION = 1008
 
 
-def _reason_to_refuse(token: str | None, game_id: UUID) -> int | None:
-    """The close code to refuse this connection with, or None if it is allowed."""
+@dataclass
+class _Access:
+    """The answer to "may this request watch this game?"."""
+
+    close_code: int | None = None  # set when the answer is no
+    user_id: UUID | None = None
+    session_hash: str | None = None
+    expires_at: datetime | None = None
+
+
+def _check_access(token: str | None, game_id: UUID) -> _Access:
     if token is None:
-        return CLOSE_NOT_AUTHENTICATED
+        return _Access(close_code=CLOSE_NOT_AUTHENTICATED)
     # A database session just for this check. It is closed again before the connection
     # settles in, so an open WebSocket does not hold a database connection for its lifetime.
     with SessionLocal() as session:
@@ -56,12 +71,16 @@ def _reason_to_refuse(token: str | None, game_id: UUID) -> int | None:
             auth_session = user_service.get_auth_session(session, token)
             game_service.get_game(session, auth_session.user, game_id)
         except NotAuthenticated:
-            return CLOSE_NOT_AUTHENTICATED
+            return _Access(close_code=CLOSE_NOT_AUTHENTICATED)
         except GameNotFound:
-            return CLOSE_GAME_NOT_FOUND
+            return _Access(close_code=CLOSE_GAME_NOT_FOUND)
         except NotAPlayer:
-            return CLOSE_NOT_A_PLAYER
-    return None
+            return _Access(close_code=CLOSE_NOT_A_PLAYER)
+        return _Access(
+            user_id=auth_session.user_id,
+            session_hash=auth_session.token_hash,
+            expires_at=auth_session.expires_at,
+        )
 
 
 @router.websocket("/api/v1/games/{game_id}/ws")
@@ -74,16 +93,21 @@ async def watch_game(websocket: WebSocket, game_id: UUID):
 
     token = websocket.cookies.get(SESSION_COOKIE)
     # the check talks to the database, which would block every other connection if run here
-    close_code = await run_in_threadpool(_reason_to_refuse, token, game_id)
+    access = await run_in_threadpool(_check_access, token, game_id)
 
     # Open the connection first even when refusing: a browser can only read a close code
     # from a connection that was opened, and the page needs the code to know not to retry.
     await websocket.accept()
-    if close_code is not None:
-        await websocket.close(code=close_code)
+    if access.close_code is not None:
+        await websocket.close(code=access.close_code)
         return
 
-    watchers.add(game_id, websocket)
+    added = watchers.add(
+        game_id, websocket, access.user_id, access.session_hash, access.expires_at
+    )
+    if not added:
+        await websocket.close(code=CLOSE_TOO_MANY_CONNECTIONS)
+        return
     try:
         # Nothing the page sends is used. Waiting here is how the server finds out
         # that the page has gone, which raises WebSocketDisconnect.

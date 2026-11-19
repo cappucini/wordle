@@ -12,7 +12,7 @@ const THIRD = { id: 'user-third', username: 'third' }
 
 describe('GameResult', () => {
   it('shows nothing while the game is in progress', () => {
-    const { container } = render(<GameResult game={makeGame()} />)
+    const { container } = render(<GameResult game={makeGame()} currentUser={ERICA} />)
 
     expect(container).toBeEmptyDOMElement()
   })
@@ -20,7 +20,7 @@ describe('GameResult', () => {
   it('says "1 guess" for a win on the first try', () => {
     const game = makeGame({ status: 'won', answer: 'crane', guesses: [makeGuess('crane', 'CCCCC')] })
 
-    render(<GameResult game={game} />)
+    render(<GameResult game={game} currentUser={ERICA} />)
 
     expect(screen.getByText('You got it in 1 guess!')).toBeInTheDocument()
   })
@@ -32,13 +32,39 @@ describe('GameResult', () => {
       guesses: [makeGuess('slate', 'AACAC'), makeGuess('react', 'PPCPA'), makeGuess('crane', 'CCCCC')],
     })
 
-    render(<GameResult game={game} />)
+    render(<GameResult game={game} currentUser={ERICA} />)
 
     expect(screen.getByText('You got it in 3 guesses!')).toBeInTheDocument()
   })
 
+  it("names the player who got it when it wasn't you", () => {
+    const game = makeGame({
+      status: 'won',
+      answer: 'crane',
+      players: [ERICA, SAM],
+      guesses: [makeGuess('slate', 'AACAC', 'erica'), makeGuess('crane', 'CCCCC', 'sam')],
+    })
+
+    render(<GameResult game={game} currentUser={ERICA} />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('sam got it in 2 guesses!')
+  })
+
+  it('says "You got it" to the player who made the winning guess in a shared game', () => {
+    const game = makeGame({
+      status: 'won',
+      answer: 'crane',
+      players: [ERICA, SAM],
+      guesses: [makeGuess('slate', 'AACAC', 'erica'), makeGuess('crane', 'CCCCC', 'sam')],
+    })
+
+    render(<GameResult game={game} currentUser={SAM} />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('You got it in 2 guesses!')
+  })
+
   it('reveals the answer after a loss', () => {
-    render(<GameResult game={makeGame({ status: 'lost', answer: 'crane' })} />)
+    render(<GameResult game={makeGame({ status: 'lost', answer: 'crane' })} currentUser={ERICA} />)
 
     expect(screen.getByText(/Out of guesses\. The word was/)).toHaveTextContent(
       'Out of guesses. The word was crane.',
@@ -46,7 +72,7 @@ describe('GameResult', () => {
   })
 
   it.each(['won', 'lost'])('announces a %s game to screen readers', (status) => {
-    render(<GameResult game={makeGame({ status: status, answer: 'crane', guesses: [makeGuess('crane', 'CCCCC')] })} />)
+    render(<GameResult game={makeGame({ status: status, answer: 'crane', guesses: [makeGuess('crane', 'CCCCC')] })} currentUser={ERICA} />)
 
     // role="status" is read out when it appears, without moving the player's focus
     expect(screen.getByRole('status')).toHaveTextContent(/You got it|Out of guesses/)
@@ -109,6 +135,17 @@ describe('GameList', () => {
     await userEvent.click(screen.getAllByRole('button')[1])
 
     expect(onOpen).toHaveBeenCalledExactlyOnceWith('b')
+  })
+
+  it('gives up focus after a game is opened with the keyboard', async () => {
+    // otherwise the Enter that submits the first guess would press this button again
+    renderList({ games: [makeGame({ id: 'a' })] })
+    const button = screen.getByRole('button')
+    button.focus()
+
+    await userEvent.keyboard('{Enter}')
+
+    expect(button).not.toHaveFocus()
   })
 
   it('offers "Show more" only when there is another page', async () => {
@@ -236,6 +273,20 @@ describe('Players', () => {
       vi.advanceTimersByTime(3000)
     })
     expect(inviteButton()).toBeInTheDocument()
+    vi.unstubAllGlobals()
+  })
+
+  it('gives up focus after the link is copied with the keyboard', async () => {
+    vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockResolvedValue() } })
+    render(<Players game={makeGame()} currentUser={ERICA} />)
+    const button = inviteButton()
+    button.focus()
+
+    await act(async () => {
+      fireEvent.click(button, { detail: 0 }) // detail 0 is how a keyboard "click" arrives
+    })
+
+    expect(button).not.toHaveFocus()
     vi.unstubAllGlobals()
   })
 

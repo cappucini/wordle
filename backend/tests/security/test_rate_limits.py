@@ -4,6 +4,7 @@ The limits (see app/domain/rules.py):
   - 10 failed log-ins for one username in 5 minutes
   - 30 failed log-ins from one address in 5 minutes
   - 20 accounts created from one address in 5 minutes
+  - 30 refused sign-ups (username already taken) from one address in 5 minutes
 """
 
 import pytest
@@ -128,6 +129,26 @@ def test_requests_refused_for_their_shape_do_not_count(player, client):
     assert log_in(client, player.username).status_code == 201
 
 
+def test_wrong_passwords_sent_at_the_same_instant_cannot_exceed_the_limit(player, new_client):
+    import threading
+    from collections import Counter
+    from concurrent.futures import ThreadPoolExecutor
+
+    # 25 guesses released together against a limit of 10 (and under the address limit of 30)
+    browsers = [new_client() for _ in range(25)]
+    start = threading.Barrier(len(browsers))
+
+    def guess(browser):
+        start.wait(timeout=10)
+        return log_in(browser, player.username, "wrong password").status_code
+
+    with ThreadPoolExecutor(len(browsers)) as pool:
+        statuses = Counter(pool.map(guess, browsers))
+
+    # exactly ten had their password checked; the rest were turned away unchecked
+    assert statuses == {401: 10, 429: 15}
+
+
 # ---------- failed log-ins from one address ----------
 
 
@@ -185,6 +206,30 @@ def test_sign_ups_that_fail_do_not_count(new_client):
     sign_up(new_client, "erica")
     for _ in range(25):
         assert sign_up(new_client, "erica").status_code == 409  # username taken
+
+    assert sign_up(new_client, "someone_new").status_code == 201
+
+
+def test_thirty_sign_ups_refused_for_a_taken_username_block_the_address(new_client):
+    # without this, the sign-up form could be used to find out which usernames exist
+    sign_up(new_client, "erica")
+    for _ in range(30):
+        assert sign_up(new_client, "erica").status_code == 409
+
+    probe = sign_up(new_client, "erica")
+    honest = sign_up(new_client, "someone_new")
+
+    assert probe.status_code == 429
+    assert probe.json()["code"] == TOO_MANY
+    assert honest.status_code == 429
+
+
+def test_refused_sign_ups_stop_counting_after_five_minutes(new_client, clock):
+    sign_up(new_client, "erica")
+    for _ in range(30):
+        sign_up(new_client, "erica")
+
+    clock.advance(FIVE_MINUTES)
 
     assert sign_up(new_client, "someone_new").status_code == 201
 

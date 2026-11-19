@@ -145,6 +145,8 @@ export function joinGame(gameId) {
 export const SOCKET_CLOSED_NOT_AUTHENTICATED = 4401
 export const SOCKET_CLOSED_NOT_A_PLAYER = 4403
 export const SOCKET_CLOSED_GAME_NOT_FOUND = 4404
+// this player already has as many of these connections open as one player may (about ten tabs)
+export const SOCKET_CLOSED_TOO_MANY_CONNECTIONS = 4429
 
 export function openGameSocket(gameId) {
   return new WebSocket(SOCKET_URL + '/games/' + gameId + '/ws')

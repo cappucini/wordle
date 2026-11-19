@@ -202,6 +202,31 @@ describe('AuthForm: creating an account', () => {
     expect(onCreateAccount).not.toHaveBeenCalled()
   })
 
+  it('refuses a password over 128 characters with a sentence about its length', async () => {
+    const { onCreateAccount } = renderForm()
+    await switchToCreate()
+    await userEvent.type(screen.getByLabelText('Username'), 'erica')
+    await userEvent.click(screen.getByLabelText('Password'))
+    await userEvent.paste('p'.repeat(129))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
+
+    expect(message()).toHaveTextContent('Passwords can be at most 128 characters.')
+    expect(onCreateAccount).not.toHaveBeenCalled()
+  })
+
+  it('accepts a password of exactly 128 characters', async () => {
+    const { onCreateAccount } = renderForm()
+    await switchToCreate()
+    await userEvent.type(screen.getByLabelText('Username'), 'erica')
+    await userEvent.click(screen.getByLabelText('Password'))
+    await userEvent.paste('p'.repeat(128))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
+
+    expect(onCreateAccount).toHaveBeenCalledOnce()
+  })
+
   it('accepts a password of exactly 8 characters', async () => {
     const { onCreateAccount } = renderForm()
     await switchToCreate()
