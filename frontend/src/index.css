@@ -1,47 +1,169 @@
-/* Theme: pink and sage green on a warm cream page. Every colour is defined here once. */
+/* Hallmark · shape: app screen · genre: atmospheric · theme: Midnight (deal 2/3, seed cyberpunk-multiplayer-word-guessing-game-9678·56cdbe31·2026-11-19·r0) · redesign: full
+ * nav: kept, the title bar with the player and sign out at its right · signature: the board, square cells with azure fills and dashed magenta near-misses · states: loading, empty, error, full
+ * axes: dark/grotesk-sans/cool · posture: committed · contrast: pass · v2.0.0 */
+/* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V3 · weakest: V, the first logged build so there is nothing to differ from; moved the games list into a right rail and anchored the board left rather than restacking the old centred column */
+/* the font is bundled with the app (width and weight axes), so no page load waits on another site */
+@import "@fontsource-variable/mona-sans/wdth.css";
+
+/* Theme: cyberpunk on a midnight-blue ground. Azure is the one signal (the primary button,
+   a correct letter); magenta marks a letter in the wrong position. Every colour, font and
+   size is defined here once; App.css only uses these names. */
 
 :root {
-  --page: #fff6f8;
-  --surface: #ffffff;
-  --line: #ecd5dc;
+  color-scheme: dark;
 
-  --ink: #3d2b35;
-  --ink-soft: #7d6a73;
+  /* the ground and the surfaces stepped up from it */
+  --color-paper: oklch(14% 0.048 264);
+  --color-paper-2: oklch(18.5% 0.052 264);
+  --color-paper-3: oklch(23% 0.055 264);
 
-  --pink: #f7a8c4;
-  --pink-soft: #fde3ec;
-  --pink-deep: #c9567f;
+  /* text */
+  --color-ink: oklch(95% 0.016 250);
+  --color-ink-2: oklch(88% 0.05 245);
+  --color-muted: oklch(73% 0.04 256);
 
-  /* a letter that is in the word but in the wrong position */
-  --red: #ef6b6b;
-  --red-deep: #b93a3a;
+  /* lines */
+  --color-rule: oklch(29% 0.058 264);
+  --color-rule-2: oklch(40% 0.06 262);
 
-  --sage: #a9c5a0;
-  --sage-soft: #e3eedf;
-  --sage-deep: #5f8a5a;
+  /* azure: the primary button, a correct letter, a won game */
+  --color-accent: oklch(83% 0.14 215);
+  --color-accent-hover: oklch(89% 0.11 215);
+  --color-accent-2: oklch(58% 0.1 236);
+  --color-accent-ink: oklch(16% 0.05 264);
+  --color-focus: oklch(86% 0.14 212);
 
-  --stone: #e4dfe1;
-  --key: #f3e6ea;
+  /* magenta: a letter that is in the word but in the wrong position */
+  --color-present: oklch(74% 0.19 350);
+  --color-present-fill: oklch(30% 0.11 350);
 
-  font-family: ui-rounded, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', 'Nunito', system-ui, sans-serif;
-  line-height: 1.5;
-  color: var(--ink);
-  background-color: var(--page);
+  /* grey: a letter that is not in the word */
+  --color-absent: oklch(47% 0.012 264);
+  --color-absent-ink: oklch(97% 0.008 250);
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --color-error: oklch(72% 0.15 27);
+  --color-success: oklch(76% 0.13 150);
+
+  --font-display: "Mona Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-display);
+  --display-weight: 300;
+  --display-stretch: 125%;
+  --tracking-display: -0.015em;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.2rem;
+  --text-xl: 1.44rem;
+  --text-2xl: 1.728rem;
+  --text-3xl: 2.074rem;
+
+  --space-3xs: 2px;
+  --space-2xs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+  --space-2xl: 64px;
+  --space-3xl: 96px;
+
+  /* everything is cut square */
+  --radius-card: 0;
+  --radius-pill: 0;
+  --rule-hair: 1px;
+  /* the corner cut off the primary button, the result banner and the sign-in panel */
+  --cut: 10px;
+  --cut-large: 24px;
+
+  --control: 40px;
+  --key-height: 48px;
+  --tile-max: 3.6rem;
+  --container: 34rem;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+
+html {
+  scrollbar-color: var(--color-muted) var(--color-paper);
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
-  /* soft blobs of pink and sage in the corners */
-  background:
-    radial-gradient(circle at 12% 8%, var(--pink-soft) 0, transparent 38%),
-    radial-gradient(circle at 90% 92%, var(--sage-soft) 0, transparent 42%),
-    var(--page);
-  background-attachment: fixed;
+  min-height: 100dvh;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  line-height: 1.55;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  caret-color: var(--color-accent);
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-accent) 22%, transparent);
+  color: var(--color-ink);
+}
+
+/* the focus ring appears at once, never faded in */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  font-stretch: var(--display-stretch);
+  letter-spacing: var(--tracking-display);
+  line-height: 1.05;
+  overflow-wrap: break-word;
+  min-width: 0;
+  text-wrap: balance;
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+strong {
+  font-weight: 500;
+}
+
+button,
+input {
+  font: inherit;
+  border-radius: 0;
+}
+
+/* a safety net for anything App.css forgets: no animation plays under reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
