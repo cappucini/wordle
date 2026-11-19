@@ -353,28 +353,46 @@ h3 {
 }
 
 /* The game in miniature: its guesses as rows of small squares, down the left of the row.
-   It has a fixed size, so a long game (up to nine guesses of eight letters) fits the same
-   box as a short one: the squares are 8px when there is room and shrink when there is not. */
+
+   It sits in a fixed box, so every row of "Your games" is the same height whether the game
+   took one guess or nine. One square size is chosen for the whole miniature: 8px when
+   everything fits, otherwise the largest size at which --cols squares fit the box's width
+   AND --rows fit its height (GameList.jsx sets both). Using one size for both directions
+   is what keeps the squares square. */
 .game-list-mini {
+  --mini-width: 48px;
+  --mini-height: 40px;
+  --mini-gap: 1px;
+  --fit-across: calc((var(--mini-width) - (var(--cols) - 1) * var(--mini-gap)) / var(--cols));
+  --fit-down: calc((var(--mini-height) - (var(--rows) - 1) * var(--mini-gap)) / var(--rows));
+  --square: max(1px, min(8px, var(--fit-across), var(--fit-down)));
+
   grid-row: 1 / span 2;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 1px;
-  width: 48px;
-  height: 40px;
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--square));
+  grid-auto-rows: var(--square);
+  align-content: center;
+  gap: var(--mini-gap);
+  width: var(--mini-width);
+  height: var(--mini-height);
+  /* a safety net for games far longer than the rules allow: clip, never push the row taller */
+  overflow: hidden;
 }
 
+/* Whole pixels draw crisply; a square of 5.83px would blur at its edges.
+   Browsers too old for round() keep the exact size from the rule above. */
+@supports (width: round(down, 1px, 1px)) {
+  .game-list-mini {
+    --square: max(1px, round(down, min(8px, var(--fit-across), var(--fit-down)), 1px));
+  }
+}
+
+/* each guess is a row of the grid; the wrapper itself takes no space */
 .game-list-mini > span {
-  display: flex;
-  flex: 0 1 8px;
-  gap: 1px;
-  min-height: 0;
+  display: contents;
 }
 
 .game-list-mini i {
-  flex: 0 1 8px;
-  min-width: 0;
   background: var(--color-absent);
 }
 

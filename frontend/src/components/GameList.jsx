@@ -33,9 +33,15 @@ function GameList({ games, currentGameId, hasMore, onOpen, onLoadMore }) {
                   event.currentTarget.blur()
                 }}
               >
-                {/* the game in miniature: one row of small squares per guess, coloured by result.
-                    Decoration only; the words beside it say the same thing. */}
-                <span className="game-list-mini" aria-hidden="true">
+                {/* The game in miniature: one row of small squares per guess, coloured by result.
+                    Decoration only; the words beside it say the same thing.
+                    --cols and --rows tell App.css how big a grid to fit into its fixed box,
+                    so it can pick one square size that fits both ways. */}
+                <span
+                  className="game-list-mini"
+                  aria-hidden="true"
+                  style={{ '--cols': game.word_length, '--rows': Math.max(guessesUsed, 1) }}
+                >
                   {game.guesses.map((guess) => (
                     <span key={guess.number}>
                       {guess.results.map((result, index) => (

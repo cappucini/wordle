@@ -154,6 +154,33 @@ describe('GameList', () => {
     expect(container.querySelectorAll('.game-list-mini i')).toHaveLength(0)
   })
 
+  it('tells the stylesheet how many columns and rows to fit, so the squares stay square', () => {
+    // App.css sizes every square from these two numbers: the largest whole size at which
+    // this many columns and rows fit the miniature's fixed box
+    const game = makeGame({
+      word_length: 8,
+      guesses: [makeGuess('notebook', 'APPPPAAA'), makeGuess('textbook', 'PPAAPPAA'), makeGuess('absolute', 'CCCCCCCC')],
+    })
+
+    const { container } = render(
+      <GameList games={[game]} currentGameId={null} hasMore={false} onOpen={() => {}} onLoadMore={() => {}} />,
+    )
+
+    const mini = container.querySelector('.game-list-mini')
+    expect(mini.style.getPropertyValue('--cols')).toBe('8')
+    expect(mini.style.getPropertyValue('--rows')).toBe('3')
+  })
+
+  it('still describes a sensible grid for a game with no guesses yet', () => {
+    const { container } = render(
+      <GameList games={[makeGame()]} currentGameId={null} hasMore={false} onOpen={() => {}} onLoadMore={() => {}} />,
+    )
+
+    const mini = container.querySelector('.game-list-mini')
+    expect(mini.style.getPropertyValue('--cols')).toBe('5')
+    expect(mini.style.getPropertyValue('--rows')).toBe('1') // never zero: the size is found by dividing by it
+  })
+
   it('draws every guess of the longest possible game, nine rows of eight', () => {
     // the miniature has a fixed size (see App.css), so the row stays the same height
     const nineGuesses = Array.from({ length: 9 }, () => makeGuess('notebook', 'APPPPAAA'))
