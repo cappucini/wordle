@@ -90,6 +90,15 @@ def login(session: Session, username: str, password: str) -> tuple[UserRow, str,
         # main.py answers 401 INVALID_CREDENTIALS
         raise InvalidCredentials("Wrong username or password")
 
+    # Tidy up while we are here: this user's sign-ins that have already expired can never be
+    # used again. Without this they would stay in the table for good, since an expired
+    # session is otherwise only removed when someone tries to use it.
+    session.execute(
+        delete(AuthSessionRow).where(
+            AuthSessionRow.user_id == user.id,
+            AuthSessionRow.expires_at <= datetime.now(timezone.utc),
+        )
+    )
     token, csrf_token = _start_session(session, user)
     session.commit()
     return user, token, csrf_token

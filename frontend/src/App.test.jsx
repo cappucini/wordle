@@ -69,6 +69,22 @@ describe('App: signing in and out', () => {
     expect(screen.queryByText('Signed in as')).toBeNull()
   })
 
+  it('says so on the form when the server cannot be reached', async () => {
+    api.getCurrentUser.mockRejectedValue(apiError('NETWORK_ERROR'))
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Sign in to play' })).toBeInTheDocument()
+    expect(screen.getByText("Can't reach the game server. Is it running?")).toBeInTheDocument()
+  })
+
+  it('shows no such warning to an ordinary visitor', async () => {
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Sign in to play' })
+    expect(screen.queryByText(/Can't reach the game server/)).toBeNull()
+  })
+
   it('goes straight to the game for someone already signed in', async () => {
     await renderSignedIn()
 

@@ -134,6 +134,18 @@ describe('api: what each call sends', () => {
     })
   })
 
+  it('labels the body as JSON only when it sends one', async () => {
+    await api.getConfig()
+    await api.joinGame('game-1')
+    await api.createGame(5)
+
+    // a GET or a POST with nothing in it has no body to describe; leaving the header off
+    // also spares the browser an extra "may I?" request before every read
+    expect(request(0).headers).not.toHaveProperty('Content-Type')
+    expect(request(1).headers).not.toHaveProperty('Content-Type')
+    expect(request(2).headers['Content-Type']).toBe('application/json')
+  })
+
   it('always sends the session cookie along', async () => {
     await api.getConfig()
     await api.createGame(5)

@@ -47,7 +47,7 @@ async function readJson(response) {
 async function sendRequest(method, path, data) {
   const options = {
     method: method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {},
     // send the session cookie along, and accept one when signing in
     credentials: 'include',
   }
@@ -57,7 +57,8 @@ async function sendRequest(method, path, data) {
   }
   // If .data argument is not there, on't 
   if (data !== undefined) {
-    // convert to JSON
+    // convert to JSON, and say so; a request with no body has nothing to label
+    options.headers['Content-Type'] = 'application/json'
     options.body = JSON.stringify(data)
   }
 

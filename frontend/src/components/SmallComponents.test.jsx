@@ -44,6 +44,13 @@ describe('GameResult', () => {
       'Out of guesses. The word was crane.',
     )
   })
+
+  it.each(['won', 'lost'])('announces a %s game to screen readers', (status) => {
+    render(<GameResult game={makeGame({ status: status, answer: 'crane', guesses: [makeGuess('crane', 'CCCCC')] })} />)
+
+    // role="status" is read out when it appears, without moving the player's focus
+    expect(screen.getByRole('status')).toHaveTextContent(/You got it|Out of guesses/)
+  })
 })
 
 describe('GameList', () => {

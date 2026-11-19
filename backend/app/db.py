@@ -131,7 +131,11 @@ class GamePlayerRow(Base):
 
     # both columns together are the primary key, so a user can only be in a game once
     game_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("games.id"), primary_key=True)
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    # indexed on its own as well: "Your games" looks rows up by user, and the primary key
+    # (which starts with game_id) is no help for that
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id"), primary_key=True, index=True
+    )
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

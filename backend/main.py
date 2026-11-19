@@ -1,18 +1,18 @@
-from fastapi import FastAPI
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
 from app.api.v1.config import router as config_router
 from app.api.v1.game_socket import router as game_socket_router
 from app.api.v1.games import router as games_router
 from app.api.v1.origins import ALLOWED_ORIGINS
 from app.api.v1.pagination import InvalidCursor
 from app.api.v1.users import router as users_router
-
-from contextlib import asynccontextmanager
-from app.db import create_tables, SessionLocal
-from fastapi import Request
-from fastapi.responses import JSONResponse
-from app.words.seed import seed_words_if_empty
-
+from app.db import SessionLocal, create_tables
 from app.domain.errors import (
     CsrfCheckFailed,
     GameFull,
@@ -25,7 +25,10 @@ from app.domain.errors import (
     NoWordsAvailable,
     UsernameTaken,
 )
-from fastapi.exceptions import RequestValidationError
+from app.words.seed import seed_words_if_empty
+
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -36,7 +39,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-# create_tables()
 ROUTERS = [config_router, games_router, game_socket_router, users_router]
 # register router with the app
 for router in ROUTERS:
@@ -141,6 +143,26 @@ def handle_game_full(request: Request, exc: GameFull):
     return JSONResponse(
         status_code=409, content={"code": "GAME_FULL", "detail": str(exc)}
     )
+
+
+# Anything that goes wrong without one of the handlers above: a bug, or the database being
+# unreachable. The client gets the same {"code", "detail"} shape as every other error, and
+# never the details, which go to the server log instead.
+#
+# This must be registered before the CORS middleware below. Middleware added later wraps
+# what was added earlier, so CORS ends up outside this and adds its headers to the 500 too.
+# Without them the browser hides the response, and the page reports that the server
+# cannot be reached.
+@app.middleware("http")
+async def report_unexpected_errors(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception:
+        logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={"code": "INTERNAL_ERROR", "detail": "Something went wrong on the server"},
+        )
 
 
 # Let the frontend's address call the API. The list of addresses is in app/api/v1/origins.py.

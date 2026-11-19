@@ -259,6 +259,50 @@ def test_new_session_lasts_seven_days(player, db):
     assert abs(lifetime - timedelta(days=7)) < timedelta(seconds=5)
 
 
+def test_logging_in_clears_out_that_users_expired_sessions(player, new_client, db):
+    from app.db import AuthSessionRow
+
+    # the sign-up session and one more, both long expired
+    new_client().post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+    set_session_expiry(db, datetime.now(timezone.utc) - timedelta(days=30))
+
+    response = new_client().post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+
+    assert response.status_code == 201
+    db.expire_all()
+    # only the session just created is left
+    assert db.query(AuthSessionRow).count() == 1
+
+
+def test_logging_in_keeps_sessions_that_are_still_valid(player, new_client, db):
+    from app.db import AuthSessionRow
+
+    new_client().post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+
+    assert db.query(AuthSessionRow).count() == 2
+    assert player.get("/users/me").status_code == 200
+
+
+def test_logging_in_leaves_other_users_sessions_alone(player, other_player, new_client, db):
+    from app.db import AuthSessionRow, UserRow
+
+    set_session_expiry(db, datetime.now(timezone.utc) - timedelta(days=30))
+
+    new_client().post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+
+    db.expire_all()
+    other = db.query(UserRow).filter_by(username=other_player.username).one()
+    assert db.query(AuthSessionRow).filter_by(user_id=other.id).count() == 1
+
+
 # ---------- log out ----------
 
 
