@@ -1,0 +1,14 @@
+# The frontend as the end-to-end tests see it: a production build, served on port 5173.
+# Only docker-compose.test.yml uses this file.
+FROM node:22-slim
+
+WORKDIR /frontend
+
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY . .
+RUN npm run build
+
+EXPOSE 5173
+CMD ["npx", "vite", "preview", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]

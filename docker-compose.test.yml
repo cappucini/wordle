@@ -1,0 +1,122 @@
+# The test stack. Separate from docker-compose.yml: its own project name, no host ports,
+# no shared volumes, so it can run while the development stack is up.
+#
+# Run it through the Makefile: `make test-unit`, `make test-api` and so on, or `make test`
+# for everything.
+name: wordle-test
+
+# shared by every service that runs the backend's pytest suites
+x-backend-tests: &backend-tests
+  build:
+    context: ./backend
+    dockerfile: Dockerfile.test
+  volumes:
+    - ./backend:/app:ro
+  environment: &backend-tests-env
+    PYTHONDONTWRITEBYTECODE: "1"
+    PYTHONUNBUFFERED: "1"
+
+services:
+  # A Postgres server that exists only for tests. It is a different server from the
+  # development one, not just a different database, and it keeps its data in memory (tmpfs),
+  # so everything is gone when the container stops.
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: wordle
+      POSTGRES_PASSWORD: wordle
+      POSTGRES_DB: wordle_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wordle -d wordle_test"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  # Layer 1: backend unit tests. Pure logic only.
+  # network_mode "none" removes the network entirely, so a unit test that reaches for
+  # the database or the internet fails instead of quietly becoming an integration test.
+  unit:
+    <<: *backend-tests
+    network_mode: none
+    command: pytest tests/unit
+
+  # Layers 2 and 3: backend API tests and security tests. Real HTTP requests through FastAPI
+  # into the test Postgres. The Makefile chooses which folder of tests to run.
+  api:
+    <<: *backend-tests
+    environment:
+      <<: *backend-tests-env
+      # tests/conftest.py refuses to run unless this database's name ends in "_test"
+      DATABASE_URL: postgresql+psycopg://wordle:wordle@db:5432/wordle_test
+    depends_on:
+      db:
+        condition: service_healthy
+    command: pytest tests/api
+
+  # ---- Layer 5: end-to-end tests ----
+  # The real backend, the real frontend and a real browser, all inside one network
+  # namespace: e2e-frontend and e2e share e2e-backend's network, so the browser opens
+  # http://localhost:5173 and the page calls http://localhost:8000, exactly as in development.
+
+  # The backend as it runs in production (same Dockerfile), on the test database.
+  e2e-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/app:ro
+      # The test word lists take the place of the real ones, so the application's own
+      # start-up seeding loads one known answer per length. No application code changes.
+      - ./backend/tests/words:/app/app/words/data:ro
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      DATABASE_URL: postgresql+psycopg://wordle:wordle@db:5432/wordle_test
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  # A production build of the frontend, served on port 5173.
+  e2e-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.e2e
+    network_mode: "service:e2e-backend"
+    depends_on:
+      e2e-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5173').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  # The tests themselves, with headless Chromium.
+  e2e:
+    build:
+      context: ./e2e
+    network_mode: "service:e2e-backend"
+    # Chromium needs more shared memory than Docker's default 64 MB
+    shm_size: 1gb
+    volumes:
+      # not read-only: failed tests save screenshots and logs to e2e/artifacts/
+      - ./e2e:/e2e
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      FRONTEND_URL: http://localhost:5173
+      API_URL: http://localhost:8000/api/v1
+    depends_on:
+      e2e-backend:
+        condition: service_healthy
+      e2e-frontend:
+        condition: service_healthy
+    command: pytest

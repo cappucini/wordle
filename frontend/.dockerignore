@@ -1,0 +1,4 @@
+# Kept out of Docker builds: the image installs its own packages and makes its own build.
+node_modules
+dist
+.hallmark

@@ -1,0 +1,5 @@
+# Dependencies of the end-to-end tests only. Installed by e2e/Dockerfile.
+pytest>=8.0
+selenium>=4.20
+# used to set up players and games through the API when the browser is not the point of the test
+requests>=2.31
