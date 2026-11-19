@@ -1,3 +1,13 @@
+// Names longer than this are shortened beside a row; hovering shows the full name.
+const MAX_NAME_LENGTH = 12
+
+function shortenName(name) {
+  if (name.length <= MAX_NAME_LENGTH) {
+    return name
+  }
+  return name.slice(0, MAX_NAME_LENGTH) + '…'
+}
+
 // The grid of tiles: one row per allowed guess, one tile per letter.
 // Rows already played show their results, the next row shows what is being typed,
 // and the rest are empty.
@@ -46,7 +56,7 @@ function Board({ game, typedWord, hasError }) {
         {/* in a shared game, name the player who made this guess */}
         {isShared && guess !== undefined && guess.guessed_by && (
           <span className="guesser" title={'Guessed by ' + guess.guessed_by}>
-            {guess.guessed_by}
+            {shortenName(guess.guessed_by)}
           </span>
         )}
       </div>,
