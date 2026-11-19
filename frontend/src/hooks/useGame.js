@@ -251,7 +251,11 @@ export function useGame(user) {
     // The fallback for when there is no connection: ask on a timer instead of being told.
     function startCheckingOnATimer() {
       if (checkTimer === null) {
-        checkTimer = setInterval(fetchLatest, NO_CONNECTION_CHECK_MS)
+        checkTimer = setInterval(() => {
+          if (!document.hidden) {
+            fetchLatest() // not from a tab nobody is looking at
+          }
+        }, NO_CONNECTION_CHECK_MS)
       }
     }
 
@@ -261,7 +265,15 @@ export function useGame(user) {
     }
 
     function connect() {
-      socket = openGameSocket(gameId)
+      try {
+        socket = openGameSocket(gameId)
+      } catch {
+        // The browser refused to even try (for example an insecure ws:// address on an
+        // https page). Trying again would be refused the same way, so check on a timer.
+        socket = null
+        startCheckingOnATimer()
+        return
+      }
       socket.onopen = () => {
         failedAttempts = 0
         stopCheckingOnATimer() // the server tells us about changes again
@@ -301,7 +313,9 @@ export function useGame(user) {
       isFinished = true
       clearTimeout(reconnectTimer)
       stopCheckingOnATimer()
-      socket.close()
+      if (socket !== null) {
+        socket.close()
+      }
     }
   }, [gameId, isInProgress, refreshGames])
 
@@ -348,7 +362,9 @@ export function useGame(user) {
       // - no game has been started yet
       // - game is already won or lost
       // - a guess for this game is already on its way to the server
-      if (game === null || game.status !== 'in_progress' || submittingForGame.current === game.id) {
+      // - another game is loading: the board still shows the game being left, and a word
+      //   typed now would be guessed in that one
+      if (game === null || game.status !== 'in_progress' || submittingForGame.current === game.id || isLoadingGame) {
         return
       }
       // read the word from the ref, so this is right even if several keys arrive before a redraw
@@ -429,7 +445,7 @@ export function useGame(user) {
         setRowHasProblem(false)
       }
     },
-    [game, refreshGames, changeTypedWord],
+    [game, isLoadingGame, refreshGames, changeTypedWord],
   )
 
   // Listen to the physical keyboard.

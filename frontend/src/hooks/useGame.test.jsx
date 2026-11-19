@@ -212,6 +212,28 @@ describe('useGame: typing', () => {
     expect(result.current.typedWord).toBe('crane')
   })
 
+  it('ignores keys while another game is loading, so a guess cannot land in the game being left', async () => {
+    const result = await renderStartedGame()
+    api.joinGame.mockReturnValue(new Promise(() => {})) // the other game is slow to arrive
+
+    await act(async () => result.current.openGame('game-2'))
+    await type(result, 'crane')
+    await press(result, 'Enter')
+
+    expect(result.current.typedWord).toBe('')
+    expect(api.submitGuess).not.toHaveBeenCalled()
+  })
+
+  it('takes keys again once the other game has loaded', async () => {
+    const result = await renderStartedGame()
+    api.joinGame.mockResolvedValue(makeGame({ id: 'game-2' }))
+
+    await act(async () => result.current.openGame('game-2'))
+    await type(result, 'cr')
+
+    expect(result.current.typedWord).toBe('cr')
+  })
+
   it('ignores keys before a game has started', async () => {
     const result = await renderGame()
 
@@ -745,6 +767,40 @@ describe("useGame: other players' guesses", () => {
         await wait(60_000)
 
         expect(api.getGame).not.toHaveBeenCalled()
+      })
+
+      it('does not check while the tab is in the background', async () => {
+        await renderSharedGameWithFakeClock()
+        await latestSocket().serverCloses()
+        const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+
+        await wait(30_000)
+        expect(api.getGame).not.toHaveBeenCalled()
+
+        hidden.mockReturnValue(false) // the player comes back to the tab
+        await wait(5000)
+        expect(api.getGame).toHaveBeenCalled()
+      })
+
+      it('survives the browser refusing to create a connection at all', async () => {
+        // browsers throw for an insecure ws:// address on an https page, for example
+        vi.useFakeTimers()
+        api.createGame.mockResolvedValue(SHARED)
+        api.openGameSocket.mockImplementation(() => {
+          throw new DOMException('The operation is insecure.', 'SecurityError')
+        })
+        const { result } = renderHook(() => useGame(ERICA))
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0)
+        })
+
+        await act(() => result.current.startGame()) // must not crash the page
+        api.getGame.mockResolvedValue(WITH_SAMS_GUESS)
+        await wait(5000)
+
+        // the game is playable, and the board still updates by checking on a timer
+        expect(result.current.game.guesses).toHaveLength(1)
+        expect(api.openGameSocket).toHaveBeenCalledOnce() // no point asking the browser again
       })
 
       it('checks every five seconds, without reconnecting, when the player has too many tabs open', async () => {

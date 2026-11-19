@@ -1,12 +1,21 @@
 """The limits on log-in and sign-up attempts, and the calls the routes in users.py make.
 
-What is limited, and why:
-
+Always on
+---------
   - Failed log-ins for one username: stops one account's password being guessed.
+
+On only when RATE_LIMIT_BY_ADDRESS=true
+---------------------------------------
   - Failed log-ins from one network address: stops one machine guessing across many accounts.
   - Accounts created from one address: stops one machine filling the database with accounts.
   - Sign-ups refused because the username was taken, from one address: stops the sign-up
     form being used to find out which usernames exist.
+
+These three count by the address a request comes from, so they only make sense where the
+backend can tell visitors apart. Often it cannot: behind Docker's network (how this project
+runs) or behind a reverse proxy, every request appears to come from the same address. Counted
+that way, one visitor's wrong passwords would lock out everybody. So they are off by
+default, and are for a deployment where each visitor's own address reaches the backend.
 
 Being over a limit answers 429 TOO_MANY_ATTEMPTS (see main.py) until enough time has passed.
 The numbers are in app/domain/rules.py; each can be overridden by an environment variable
@@ -18,13 +27,8 @@ Every attempt is counted *before* it is carried out (begin_login, begin_signup),
 back afterwards if it turns out not to be the kind being limited. Counting first is what
 makes the limits hold when many requests arrive at the same instant.
 
-Things to know:
-
-  - The address is the one the connection comes from. Behind a reverse proxy that is the
-    proxy's address for everybody, so the per-address limits would be shared by all users;
-    a deployment like that needs the real client address passed through first.
-  - Someone who knows a username can keep it over its limit and so keep that player from
-    logging in. They cannot end a session the player already has.
+Thing to know: someone who knows a username can keep it over its limit and so keep that
+player from logging in. They cannot end a session the player already has.
 """
 
 import os
@@ -40,6 +44,14 @@ from app.domain.rules import (
     RATE_LIMIT_WINDOW_SECONDS,
 )
 from app.rate_limit import AttemptLimiter
+
+def setting_is_on(name: str, environ=os.environ) -> bool:
+    return environ.get(name, "false").strip().lower() == "true"
+
+
+# Whether to count by network address at all. Read once at start-up.
+LIMIT_BY_ADDRESS = setting_is_on("RATE_LIMIT_BY_ADDRESS")
+
 
 def limit_from_environment(name: str, default: int, environ=os.environ) -> int:
     """A limit's number: the environment variable of that name if set, otherwise the default.
@@ -106,9 +118,14 @@ def begin_login(username: str, address: str) -> None:
     Counts this attempt as a failed log-in straight away. If the password turns out to be
     wrong there is nothing more to do; if it is right, call login_succeeded.
     """
-    _count_under_both(
-        failed_logins_by_username, username, failed_logins_by_address, address
-    )
+    if LIMIT_BY_ADDRESS:
+        _count_under_both(
+            failed_logins_by_username, username, failed_logins_by_address, address
+        )
+        return
+    seconds = failed_logins_by_username.attempt(username)
+    if seconds > 0:
+        raise TooManyAttempts(seconds)
 
 
 def login_succeeded(username: str, address: str) -> None:
@@ -116,10 +133,11 @@ def login_succeeded(username: str, address: str) -> None:
     # counting too. For the address only this one attempt is taken back: one good log-in
     # must not excuse guesses made at other accounts from the same machine.
     failed_logins_by_username.clear(username)
-    failed_logins_by_address.forgive(address)
+    if LIMIT_BY_ADDRESS:
+        failed_logins_by_address.forgive(address)
 
 
-# ---- sign-up ----
+# ---- sign-up (limited by address only, so these do nothing unless that is switched on) ----
 
 
 def begin_signup(address: str) -> None:
@@ -128,14 +146,17 @@ def begin_signup(address: str) -> None:
     Counts this attempt both as an account created and as a refused sign-up. Afterwards
     call signup_succeeded or signup_refused, which takes back the one that did not happen.
     """
-    _count_under_both(
-        signups_by_address, address, refused_signups_by_address, address
-    )
+    if LIMIT_BY_ADDRESS:
+        _count_under_both(
+            signups_by_address, address, refused_signups_by_address, address
+        )
 
 
 def signup_succeeded(address: str) -> None:
-    refused_signups_by_address.forgive(address)
+    if LIMIT_BY_ADDRESS:
+        refused_signups_by_address.forgive(address)
 
 
 def signup_refused(address: str) -> None:
-    signups_by_address.forgive(address)
+    if LIMIT_BY_ADDRESS:
+        signups_by_address.forgive(address)

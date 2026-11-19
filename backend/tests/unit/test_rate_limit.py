@@ -210,3 +210,19 @@ def test_the_limits_in_force_are_the_documented_defaults():
     assert rate_limits.failed_logins_by_address.max_attempts == 30
     assert rate_limits.signups_by_address.max_attempts == 20
     assert rate_limits.refused_signups_by_address.max_attempts == 30
+
+
+def test_limiting_by_address_is_off_unless_the_setting_says_true():
+    from app.api.v1.rate_limits import setting_is_on
+
+    assert setting_is_on("RATE_LIMIT_BY_ADDRESS", environ={}) is False
+    assert setting_is_on("RATE_LIMIT_BY_ADDRESS", environ={"RATE_LIMIT_BY_ADDRESS": "false"}) is False
+    assert setting_is_on("RATE_LIMIT_BY_ADDRESS", environ={"RATE_LIMIT_BY_ADDRESS": ""}) is False
+    assert setting_is_on("RATE_LIMIT_BY_ADDRESS", environ={"RATE_LIMIT_BY_ADDRESS": "true"}) is True
+    assert setting_is_on("RATE_LIMIT_BY_ADDRESS", environ={"RATE_LIMIT_BY_ADDRESS": "TRUE"}) is True
+
+
+def test_limiting_by_address_is_off_in_the_test_stack_as_in_production():
+    from app.api.v1 import rate_limits
+
+    assert rate_limits.LIMIT_BY_ADDRESS is False

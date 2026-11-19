@@ -74,10 +74,6 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
       DATABASE_URL: postgresql+psycopg://wordle:wordle@db:5432/wordle_test
-      # Every browser test signs up from the same address within a few seconds, which no
-      # real visitor does. Raise that one limit so the journeys are not refused sign-up;
-      # the limits themselves are tested in backend/tests/security/test_rate_limits.py.
-      MAX_SIGNUPS_PER_ADDRESS: "1000"
     depends_on:
       db:
         condition: service_healthy

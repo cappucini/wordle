@@ -1,6 +1,7 @@
 import './App.css'
 import GameScreen from './GameScreen'
 import AuthForm from './components/AuthForm'
+import ErrorBoundary from './components/ErrorBoundary'
 import Title from './components/Title'
 import { clearGameIdFromUrl } from './gameUrl'
 import { useAuth } from './hooks/useAuth'
@@ -32,17 +33,20 @@ function App() {
     <main className="app">
       <Title />
 
-      {isCheckingSignIn && <p className="message">Loading...</p>}
+      {/* the title above stays on screen even if something below fails while drawing */}
+      <ErrorBoundary>
+        {isCheckingSignIn && <p className="message">Loading...</p>}
 
-      {!isCheckingSignIn && user === null && (
-        <AuthForm onSignIn={signIn} onCreateAccount={createAccount} notice={notice} />
-      )}
+        {!isCheckingSignIn && user === null && (
+          <AuthForm onSignIn={signIn} onCreateAccount={createAccount} notice={notice} />
+        )}
 
-      {/* key={user.id} gives each player a fresh game screen, so signing in as someone else
-          never shows the previous player's game for a moment */}
-      {!isCheckingSignIn && user !== null && (
-        <GameScreen key={user.id} user={user} onSignOut={handleSignOut} />
-      )}
+        {/* key={user.id} gives each player a fresh game screen, so signing in as someone else
+            never shows the previous player's game for a moment */}
+        {!isCheckingSignIn && user !== null && (
+          <GameScreen key={user.id} user={user} onSignOut={handleSignOut} />
+        )}
+      </ErrorBoundary>
     </main>
   )
 }

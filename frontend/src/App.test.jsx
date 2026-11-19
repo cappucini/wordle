@@ -305,3 +305,20 @@ describe('App: the game screen', () => {
     expect(window.location.search).toBe('?game=game-0')
   })
 })
+
+describe('App: when something unexpected breaks while drawing the page', () => {
+  it('shows a message and a way to reload instead of a blank page', async () => {
+    // the browser and React both report the error to the console; keep the test output clean
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    // a game missing its guesses makes the board fail while drawing
+    api.getCurrentUser.mockResolvedValue(ERICA)
+    window.history.replaceState(null, '', '/?game=broken')
+    api.joinGame.mockResolvedValue({ ...makeGame({ id: 'broken' }), guesses: null })
+
+    render(<App />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong.')
+    expect(screen.getByRole('button', { name: 'Reload the page' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Wordle' })).toBeInTheDocument() // the title is still there
+  })
+})

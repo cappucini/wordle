@@ -295,6 +295,39 @@ def test_any_signed_in_request_extends_the_session(player, db):
     assert session_expiry(db) - datetime.now(timezone.utc) > timedelta(days=6, hours=23)
 
 
+def session_cookies_set_by(response) -> list[str]:
+    return [
+        header
+        for header in response.headers.get_list("set-cookie")
+        if header.startswith("wordle_session=")
+    ]
+
+
+def test_cookie_is_renewed_even_when_the_request_that_extends_the_session_is_refused(player, db):
+    # Otherwise the server would extend the sign-in while the browser's cookie kept its
+    # old end date, and an active player could still be signed out on day seven.
+    set_session_expiry(db, datetime.now(timezone.utc) + timedelta(days=3))
+
+    response = player.post("/games", json={"word_length": 99})  # refused: no such length
+
+    assert response.status_code == 422
+    assert session_expiry(db) - datetime.now(timezone.utc) > timedelta(days=6, hours=23)
+    [cookie] = session_cookies_set_by(response)
+    assert "Max-Age=604800" in cookie
+    assert "HttpOnly" in cookie
+
+
+def test_logging_out_with_a_session_due_for_renewal_still_clears_the_cookie(player, db):
+    set_session_expiry(db, datetime.now(timezone.utc) + timedelta(days=3))
+
+    response = player.delete("/sessions/current")
+
+    assert response.status_code == 204
+    [cookie] = session_cookies_set_by(response)  # one instruction to the browser, not two
+    assert "Max-Age=0" in cookie
+    assert player.get("/users/me").status_code == 401
+
+
 def test_session_used_again_within_a_day_is_left_alone(player, db):
     # extended (or created) twelve hours ago; no need to write to the database on every request
     almost_new = datetime.now(timezone.utc) + timedelta(days=6, hours=12)

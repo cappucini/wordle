@@ -6,6 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.v1.auth import renew_session_cookie
 from app.api.v1.config import router as config_router
 from app.api.v1.game_socket import router as game_socket_router
 from app.api.v1.games import router as games_router
@@ -166,15 +167,19 @@ def handle_game_full(request: Request, exc: GameFull):
 # Without them the browser hides the response, and the page reports that the server
 # cannot be reached.
 @app.middleware("http")
-async def report_unexpected_errors(request: Request, call_next):
+async def finish_response(request: Request, call_next):
     try:
-        return await call_next(request)
+        response = await call_next(request)
     except Exception:
         logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-        return JSONResponse(
+        response = JSONResponse(
             status_code=500,
             content={"code": "INTERNAL_ERROR", "detail": "Something went wrong on the server"},
         )
+    # every response passes through here, which makes it the place to renew the cookie
+    # of a sign-in that was extended during this request (see renew_session_cookie)
+    renew_session_cookie(request, response)
+    return response
 
 
 # Let the frontend's address call the API. The list of addresses is in app/api/v1/origins.py.
