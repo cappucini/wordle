@@ -1,174 +1,83 @@
-/* Hallmark · shape: app screen · genre: atmospheric · theme: Midnight (deal 2/3, seed cyberpunk-multiplayer-word-guessing-game-9678·56cdbe31·2026-11-19·r0) · redesign: full
- * nav: kept, the title bar with the player and sign out at its right · signature: the board, square cells with azure fills and dashed magenta near-misses · states: loading, empty, error, full
- * axes: dark/grotesk-sans/cool · posture: committed · contrast: pass · v2.0.0 */
-/* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V3 · weakest: V, the first logged build so there is nothing to differ from; moved the games list into a right rail and anchored the board left rather than restacking the old centred column */
-/* the font is bundled with the app (width and weight axes), so no page load waits on another site */
-@import "@fontsource-variable/mona-sans/wdth.css";
+/* Hallmark · shape: app screen · genre: playful · theme: Halftone (by request) · redesign: full
+ * nav: an ink bar, the wordmark and the player with sign out · signature: the board set in a fat slab inside one ruled well, the keyboard beside it, a dot screen fading off the well's edge · states: loading, empty, error, full · halftone: cream
+ * axes: light/slab-serif/warm · posture: committed · contrast: pass · v2.0.0 */
+/* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V5 · weakest: R, the theme invites a poster-size figure and a spot band; kept the spot to one button, the focus ring and one screened strip, so the three result colours are not competing with it */
 
-/* Theme: cyberpunk on a midnight-blue ground. Azure is the accent (the primary button, links).
-   Scored letters use the standard colours: green for the right place, yellow for the wrong
-   place, grey for not in the word. Every colour, font and size is defined here once;
-   App.css only uses these names. */
+/* The fonts are bundled with the app, so no page load waits on another site.
+   Ultra is the fat slab for the title, headings and the letters on the board; Chivo is everything else. */
+@import "@fontsource/ultra/400.css";
+@import "@fontsource/chivo/400.css";
+@import "@fontsource/chivo/500.css";
+@import "@fontsource/chivo/700.css";
+
+/* Theme: a screen-printed label. Cream stock, brown-black ink, thick ink rules, and one
+   vermilion "spot" that prints solid on the primary button and as a screen of dots.
+   Every colour, font and size is defined here once; App.css only uses these names. */
 
 :root {
-  color-scheme: dark;
-
-  /* the ground and the surfaces stepped up from it */
-  --color-paper: oklch(14% 0.048 264);
-  --color-paper-2: oklch(18.5% 0.052 264);
-  --color-paper-3: oklch(23% 0.055 264);
-
-  /* text */
-  --color-ink: oklch(95% 0.016 250);
-  --color-ink-2: oklch(88% 0.05 245);
-  --color-muted: oklch(73% 0.04 256);
-
-  /* lines */
-  --color-rule: oklch(29% 0.058 264);
-  --color-rule-2: oklch(40% 0.06 262);
-
-  /* azure: the primary button, links, a won game */
-  --color-accent: oklch(83% 0.14 215);
-  --color-accent-hover: oklch(89% 0.11 215);
-  --color-accent-2: oklch(58% 0.1 236);
-  --color-accent-ink: oklch(16% 0.05 264);
-  --color-focus: oklch(86% 0.14 212);
-
-  /* green: a letter in the right position */
-  --color-correct: oklch(72% 0.17 148);
-  --color-correct-ink: oklch(16% 0.05 264);
-
-  /* yellow: a letter that is in the word but in the wrong position */
-  --color-present: oklch(85% 0.16 95);
-  --color-present-ink: oklch(16% 0.05 264);
-
-  /* grey: a letter that is not in the word */
-  --color-absent: oklch(47% 0.012 264);
-  --color-absent-ink: oklch(97% 0.008 250);
-
-  --color-error: oklch(72% 0.15 27);
-  --color-success: oklch(76% 0.13 150);
-
-  --font-display: "Mona Sans Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-body: var(--font-display);
-  --display-weight: 300;
-  --display-stretch: 125%;
-  --tracking-display: -0.015em;
-
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
-  --text-md: 1rem;
-  --text-lg: 1.2rem;
-  --text-xl: 1.44rem;
-  --text-2xl: 1.728rem;
-  --text-3xl: 2.074rem;
-
-  --space-3xs: 2px;
-  --space-2xs: 4px;
-  --space-xs: 8px;
-  --space-sm: 12px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 40px;
-  --space-2xl: 64px;
-  --space-3xl: 96px;
-
-  /* everything is cut square */
-  --radius-card: 0;
-  --radius-pill: 0;
-  --rule-hair: 1px;
-  /* the corner cut off the primary button, the result banner and the sign-in panel */
-  --cut: 10px;
-  --cut-large: 24px;
-
-  --control: 40px;
-  --key-height: 48px;
-  --tile-max: 3.6rem;
-  --container: 34rem;
-
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur-micro: 120ms;
-  --dur-short: 220ms;
+  color-scheme: light;
+  --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px; --space-lg: 24px; --space-xl: 40px; --space-2xl: 64px; --space-3xl: 96px; --space-4xl: 144px;
+  --text-xs: 0.75rem; --text-sm: 0.875rem; --text-md: 1rem; --text-lg: 1.2rem; --text-xl: 1.44rem; --text-2xl: 1.728rem; --text-3xl: 2.074rem;
+  --text-display-s: 1.44rem; --text-display: 1.728rem; --text-section: 1.2rem; --text-title: 1rem; --text-lead: 1rem;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-in: cubic-bezier(0.7, 0, 0.84, 0); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms; --dur-short: 220ms; --dur-long: 420ms;
+  --color-error: oklch(52% 0.19 27); --color-success: oklch(50% 0.12 150);
+  --container: 1440px; --gutter: 64px; --gap-columns: 32px; --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 176px;
+  --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-sticky-nav: 300; --z-modal: 400; --z-toast: 500; --z-tooltip: 600;
+  --color-paper: oklch(96.2% 0.032 94); --color-paper-2: oklch(92.6% 0.046 92); --color-paper-3: oklch(87.5% 0.058 90);
+  --color-ink: oklch(23% 0.040 38); --color-ink-2: oklch(33% 0.045 40); --color-muted: oklch(44% 0.048 44);
+  --color-rule: oklch(82% 0.042 82);
+  --color-accent: oklch(54.5% 0.215 33); --color-accent-deep: oklch(46% 0.19 31); --color-accent-ink: oklch(97% 0.022 94); --color-focus: oklch(46% 0.19 31);
+  --color-dot: var(--color-accent); --halftone-size: 12px; --halftone-dot: 3px;
+  --font-display: "Ultra", ui-serif, Georgia, serif; --font-body: "Chivo", ui-sans-serif, sans-serif;
+  --radius-card: 0; --radius-input: 3px; --radius-pill: 999px; --rule-hair: 1px; --rule-bar: 3px;
+  --shadow-card: none;
+  --tracking-display: 0.005em; --display-weight: 400;
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+/* The three results a letter can have, as the brief fixes them: green for the right place,
+   yellow for the wrong place, grey for not in the word. The theme itself prints only the
+   vermilion, so these are added for played letters only, on tiles, keys and the squares in
+   "Your games". They differ in lightness as well as hue, so they can be told apart without colour. */
+:root {
+  --color-correct: oklch(46% 0.13 150);
+  --color-correct-ink: var(--color-accent-ink);
+  --color-present: oklch(85% 0.16 90);
+  --color-present-ink: var(--color-ink);
+  --color-absent: oklch(66% 0.03 70);
+  --color-absent-ink: var(--color-ink);
+
+  --container: 1200px;
+  --control: 44px;
+  --bar: 60px;
 }
 
-html,
-body {
-  overflow-x: clip;
-}
+/* ---------- base rules ---------- */
 
-html {
-  scrollbar-color: var(--color-muted) var(--color-paper);
-}
-
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100dvh;
-  background: var(--color-paper);
-  color: var(--color-ink);
-  font-family: var(--font-body);
-  font-size: var(--text-md);
-  line-height: 1.55;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  caret-color: var(--color-accent);
-}
-
-::selection {
-  background: color-mix(in oklab, var(--color-accent) 22%, transparent);
-  color: var(--color-ink);
-}
-
-/* the focus ring appears at once, never faded in */
-:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
-}
-
-h1,
-h2 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-weight: var(--display-weight);
-  font-stretch: var(--display-stretch);
-  letter-spacing: var(--tracking-display);
-  line-height: 1.05;
-  overflow-wrap: break-word;
-  min-width: 0;
-  text-wrap: balance;
-}
-
-p {
-  margin: 0;
-  text-wrap: pretty;
-}
-
-strong {
-  font-weight: 500;
-}
-
-button,
-input {
-  font: inherit;
-  border-radius: 0;
-}
-
-/* a safety net for anything App.css forgets: no animation plays under reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { overflow-x: clip; }
+html { scrollbar-color: var(--color-muted) var(--color-paper); scroll-padding-top: var(--space-3xl); }
+body { margin: 0; background: var(--color-paper); color: var(--color-ink); font-family: var(--font-body); font-size: var(--text-md); line-height: 1.55; -webkit-font-smoothing: antialiased; caret-color: var(--color-accent); }
+::selection { background: color-mix(in oklab, var(--color-accent) 30%, transparent); }
+:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.16em; }
+h1, h2, h3 { margin: 0; font-family: var(--font-display); font-weight: var(--display-weight, 700); font-synthesis: none; letter-spacing: var(--tracking-display); line-height: 1.05; overflow-wrap: break-word; min-width: 0; text-wrap: balance; }
+h1 { max-width: 20ch; font-size: var(--text-display); } h2 { max-width: 30ch; font-size: var(--text-section); } h3 { max-width: 40ch; font-size: var(--text-title); line-height: 1.2; }
+.lead { font-size: var(--text-lead); line-height: 1.45; max-width: 52ch; }
+p { margin: 0; text-wrap: pretty; }
+p:not([class]) { max-width: 65ch; }
+img, video { max-width: 100%; height: auto; display: block; }
+svg { display: block; }
+[hidden] { display: none !important; }
+button, input, select, textarea { font: inherit; }
+.container { width: 100%; max-width: var(--container); margin-inline: auto; padding-inline: var(--gutter); box-sizing: border-box; }
+.num, .figure, td.num { font-variant-numeric: tabular-nums; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+[data-slot] { position: relative; overflow: hidden; background: linear-gradient(160deg, var(--color-paper-2, var(--color-paper)), var(--color-paper-3, var(--color-paper))); }
+[data-slot] > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+[data-slot]:has(> img) > :not(img):not([data-keep]) { display: none !important; }
+@media (max-width: 60rem) { :root { --gutter: 24px; --section-gap-s: 80px; --section-gap: 96px; --section-gap-l: 120px; } }
+@media (max-width: 40rem) { :root { --gutter: 16px; --section-gap-s: 56px; --section-gap: 72px; --section-gap-l: 96px; --gap-columns: 16px; } }
+@media (prefers-reduced-motion: reduce) { *:not(.keep-motion), *:not(.keep-motion)::before, *:not(.keep-motion)::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
+/* photographs: natural vib=25 sat=10 con=6 */
+[data-slot] > img { filter: saturate(1.1) contrast(1.06); }

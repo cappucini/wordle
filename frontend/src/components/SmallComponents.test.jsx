@@ -118,7 +118,40 @@ describe('GameList', () => {
 
     const [solo, shared] = screen.getAllByRole('listitem')
     expect(solo).not.toHaveTextContent('players')
-    expect(shared).toHaveTextContent('2 players')
+    expect(shared).toHaveTextContent('0 of 6 guesses, 2 players')
+  })
+
+  it('draws each game in miniature: a row of squares per guess, coloured by result', () => {
+    const game = makeGame({ id: 'a', guesses: [makeGuess('slate', 'AACAC'), makeGuess('react', 'PPCPA')] })
+
+    const { container } = render(
+      <GameList games={[game]} currentGameId={null} hasMore={false} onOpen={() => {}} onLoadMore={() => {}} />,
+    )
+
+    const rows = container.querySelectorAll('.game-list-mini > span')
+    expect(rows).toHaveLength(2)
+    expect([...rows[0].children].map((square) => square.className)).toEqual([
+      'absent', 'absent', 'correct', 'absent', 'correct',
+    ])
+    expect([...rows[1].children].map((square) => square.className)).toEqual([
+      'present', 'present', 'correct', 'present', 'absent',
+    ])
+  })
+
+  it('hides the miniature from screen readers, since the words beside it say the same', () => {
+    const { container } = render(
+      <GameList games={[makeGame({ guesses: [makeGuess('slate', 'AACAC')] })]} currentGameId={null} hasMore={false} onOpen={() => {}} onLoadMore={() => {}} />,
+    )
+
+    expect(container.querySelector('.game-list-mini')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('draws no squares for a game with no guesses yet', () => {
+    const { container } = render(
+      <GameList games={[makeGame()]} currentGameId={null} hasMore={false} onOpen={() => {}} onLoadMore={() => {}} />,
+    )
+
+    expect(container.querySelectorAll('.game-list-mini i')).toHaveLength(0)
   })
 
   it('marks the game that is open', () => {

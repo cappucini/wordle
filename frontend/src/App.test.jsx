@@ -85,6 +85,20 @@ describe('App: signing in and out', () => {
     expect(screen.queryByText(/Can't reach the game server/)).toBeNull()
   })
 
+  it('explains the game beside the sign-in form', async () => {
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Sign in to play' })
+    expect(screen.getByRole('region', { name: 'How to play' })).toBeInTheDocument()
+    expect(screen.getByText('Green: the right letter in the right place.')).toBeInTheDocument()
+  })
+
+  it('does not show the explanation once signed in', async () => {
+    await renderSignedIn()
+
+    expect(screen.queryByRole('region', { name: 'How to play' })).toBeNull()
+  })
+
   it('goes straight to the game for someone already signed in', async () => {
     await renderSignedIn()
 

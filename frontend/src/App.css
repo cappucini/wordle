@@ -1,71 +1,119 @@
-/* Layout and components for both screens. Colours, fonts and sizes come from index.css. */
+/* Layout and components for both screens. Colours, fonts and sizes come from index.css.
+
+   The page, top to bottom:
+     1. an ink bar: the title on the left, who is signed in on the right
+     2. the label: three panels under ink rules (new game, players, your games)
+     3. the well: one boxed panel with the board on the left and the keyboard on the right
+   On a narrow screen the well comes first and the panels stack under it. */
 
 /* ---------- page ---------- */
 
-/* One centred column: title, controls, players, board, keyboard, then "Your games" below. */
 .app {
+  position: relative;
   width: 100%;
   max-width: var(--container);
   margin-inline: auto;
-  padding: 0 var(--space-md) var(--space-2xl);
+  padding: 0 var(--gutter) var(--space-2xl);
 }
 
-/* ---------- title ---------- */
+/* the ink bar runs the full width of the window, behind the title and the signed-in line */
+body {
+  position: relative;
+  min-height: 100dvh;
+}
 
+body::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--bar);
+  background: var(--color-ink);
+  border-bottom: var(--rule-bar) solid var(--color-accent);
+}
+
+h1,
+h2,
+h3 {
+  font-weight: var(--display-weight);
+  line-height: 1.08;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-accent) 30%, transparent);
+}
+
+/* ---------- the ink bar: title and signed-in line ---------- */
+
+/* one line, centred in the bar by its line height (the letters are separate spans, and
+   laying them out with flex would split the word into six lines for copy and paste) */
 .title {
-  padding-block: var(--space-lg) var(--space-xs);
-  font-size: var(--text-3xl);
-  text-align: center;
+  position: relative;
+  height: var(--bar);
+  max-width: none;
+  color: var(--color-accent-ink);
+  font-size: var(--text-xl);
+  letter-spacing: var(--tracking-display);
+  line-height: var(--bar);
+  white-space: nowrap;
 }
 
 .title-letter {
   display: inline-block;
 }
 
-/* ---------- signed-in line ---------- */
-
 .signed-in {
-  padding-bottom: var(--space-md);
-  border-bottom: var(--rule-hair) solid var(--color-rule);
-  color: var(--color-muted);
+  position: absolute;
+  top: 0;
+  right: var(--gutter);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  height: var(--bar);
+  max-width: none;
+  color: var(--color-accent-ink);
   font-size: var(--text-sm);
-  text-align: center;
+  font-weight: 500;
 }
 
 .signed-in strong {
-  color: var(--color-ink);
+  font-weight: 700;
 }
 
 .signed-in .link-button {
   margin-left: var(--space-sm);
 }
 
+/* on the ink bar the vermilion focus ring is too dark to see; the cream is the ring there */
+.signed-in :focus-visible {
+  outline-color: var(--color-accent-ink);
+}
+
 /* ---------- buttons ---------- */
 
 /* the one filled button: "New game", and the sign-in form's submit */
 .new-game {
-  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: var(--control);
   padding: 0 var(--space-lg);
-  border: none;
-  /* the bottom-right corner is cut off; the fill is a variable so hover can change it */
-  --fill: var(--color-accent);
-  background: linear-gradient(-45deg, transparent var(--cut), var(--fill) 0);
+  border: 0;
+  border-radius: var(--radius-input);
+  background: var(--color-accent);
   color: var(--color-accent-ink);
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
-  transition: transform var(--dur-micro) var(--ease-out);
+  transition: background-color var(--dur-short) var(--ease-out);
 }
 
-@media (hover: hover) {
-  .new-game:hover:not(:disabled) {
-    --fill: var(--color-accent-hover);
-  }
+.new-game:hover:not(:disabled) {
+  background: var(--color-accent-deep);
 }
 
 .new-game:active:not(:disabled) {
-  transform: translateY(1px);
+  background: var(--color-ink);
 }
 
 .new-game:disabled {
@@ -73,112 +121,34 @@
   cursor: not-allowed;
 }
 
-/* a quiet, text-only button: sign out, copy link, show more, switch form */
+/* a quiet, text-only button with the spot as its underline: sign out, copy link, show more, switch form */
 .link-button {
-  position: relative;
-  min-height: 32px;
+  min-height: var(--control);
   padding: 0;
-  border: none;
+  border: 0;
   background: none;
-  color: var(--color-ink-2);
-  font-weight: 500;
+  color: inherit;
+  font-weight: 700;
   text-align: left;
   text-decoration: underline;
-  text-decoration-color: var(--color-rule-2);
-  text-decoration-thickness: 1px;
-  text-underline-offset: 0.2em;
+  text-decoration-color: var(--color-accent);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 0.3em;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-@media (hover: hover) {
-  .link-button:hover {
-    color: var(--color-ink);
-    text-decoration-color: var(--color-accent);
-  }
-}
-
-.link-button:active {
-  transform: translateY(1px);
-}
-
-/* widen the touch area of the smaller controls to 44px without changing how they look */
-.new-game::before,
-.link-button::before {
-  content: "";
-  position: absolute;
-  inset: -6px 0;
-}
-
-/* ---------- new game controls ---------- */
-
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-sm) var(--space-lg);
-  margin-top: var(--space-lg);
-}
-
-.length-picker {
-  display: flex;
-  align-items: center;
-}
-
-.length-option {
-  width: var(--control);
-  height: var(--control);
-  padding: 0;
-  border: var(--rule-hair) solid var(--color-rule-2);
-  background: transparent;
-  color: var(--color-ink-2);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  transition: background-color var(--dur-short) var(--ease-out);
-}
-
-/* neighbouring options share one line instead of doubling it */
-.length-option + .length-option {
-  border-left-style: none;
-}
-
-@media (hover: hover) {
-  .length-option:hover:not(.selected) {
-    background: var(--color-paper-3);
-  }
-}
-
-.length-option:active {
-  background: var(--color-rule);
-}
-
-.length-option.selected {
-  background: var(--color-ink);
-  border-color: var(--color-ink);
-  color: var(--color-paper);
-}
-
-/* the ring sits above the neighbouring option */
-.length-option:focus-visible {
-  position: relative;
-  z-index: 1;
-}
-
-.length-label {
-  margin-left: var(--space-sm);
-  color: var(--color-muted);
-  font-size: var(--text-sm);
+.link-button:hover {
+  text-decoration-color: currentColor;
 }
 
 /* ---------- messages ---------- */
 
 .message {
   min-height: 1lh;
+  max-width: none;
   margin: var(--space-sm) 0;
-  color: var(--color-ink-2);
   font-weight: 500;
-  text-align: center;
 }
 
 /* the lines that report a problem */
@@ -187,383 +157,142 @@
   color: var(--color-error);
 }
 
+/* the empty state: nothing is open yet, so the well's place holds what to do next */
 .hint {
-  max-width: 52ch;
-  margin: var(--space-md) auto 0;
+  max-width: none;
+  padding: var(--space-xl);
+  border: var(--rule-bar) solid var(--color-ink);
+  background: var(--color-paper-2);
   color: var(--color-ink-2);
-  text-align: center;
 }
 
-.result {
-  max-width: 32rem;
-  margin: var(--space-md) auto 0;
-  padding: var(--space-sm) var(--space-md);
-  --fill: var(--color-paper-3);
-  background: linear-gradient(-45deg, transparent var(--cut), var(--fill) 0);
-  font-size: var(--text-lg);
+/* ---------- the label: three panels under ink rules ---------- */
+
+.label {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-xl);
+  padding-top: var(--space-lg);
 }
 
-.result.won {
-  --fill: var(--color-accent);
-  color: var(--color-accent-ink);
-  font-weight: 500;
+.controls,
+.players,
+.game-list {
+  display: grid;
+  align-content: start;
+  gap: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: var(--rule-bar) solid var(--color-ink);
 }
 
-/* the answer, set like the letters on the board */
-.result strong {
-  font-stretch: var(--display-stretch);
-  text-transform: uppercase;
-}
-
-/* ---------- players ---------- */
-
-.players {
+/* new game: the word lengths as a row of cells, then the one filled button */
+.length-picker {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  gap: var(--space-2xs) var(--space-md);
-  margin-bottom: var(--space-md);
+  gap: var(--space-xs);
+}
+
+.length-option {
+  flex: 1;
+  min-width: var(--control);
+  min-height: var(--control);
+  padding: 0;
+  border: 1px solid var(--color-ink);
+  border-radius: var(--radius-input);
+  background: transparent;
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color var(--dur-short) var(--ease-out);
+}
+
+.length-option:hover:not(.selected) {
+  background: var(--color-paper-2);
+}
+
+.length-option.selected {
+  background: var(--color-ink);
+  color: var(--color-accent-ink);
+}
+
+.length-label {
+  flex-basis: 100%;
+  order: -1;
+  color: var(--color-muted);
   font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.controls .new-game {
+  width: 100%;
+}
+
+/* players: the count is the panel's heading, then one row per player */
+.player-count {
+  order: -1;
+  font-family: var(--font-display);
+  font-size: var(--text-section);
+  line-height: 1.08;
 }
 
 .player-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2xs);
+  display: grid;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .player {
-  padding: var(--space-2xs) var(--space-xs);
-  background: var(--color-paper-2);
-  color: var(--color-ink-2);
-  font-weight: 500;
+  padding-block: var(--space-2xs);
+  font-weight: 700;
 }
 
-.player.you {
-  background: var(--color-paper-3);
-  color: var(--color-ink);
-}
-
-.player-count {
-  color: var(--color-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ---------- board ---------- */
-
-.board {
-  display: grid;
-  gap: var(--space-2xs);
-  /* narrower tiles for longer words, so 8 letters still fit on a phone */
-  max-width: calc(var(--columns) * var(--tile-max));
-  margin-inline: auto;
-}
-
-/* each board row, with room for the name of the player who guessed */
-.board-row {
-  position: relative;
-}
-
-.row {
-  display: grid;
-  grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
-  gap: var(--space-2xs);
-}
-
-.tile {
-  position: relative;
-  aspect-ratio: 1;
-  display: grid;
-  place-items: center;
-  border: 2px solid var(--color-rule-2);
-  background: var(--color-paper-2);
-  color: var(--color-ink);
-  font-size: clamp(1.125rem, 5vw, 1.75rem);
-  font-weight: 500;
-  font-stretch: var(--display-stretch);
-  line-height: 1;
-  text-transform: uppercase;
-  user-select: none;
-}
-
-/* a letter that has been typed but not submitted */
-.tile.filled {
-  border-color: var(--color-ink);
-  background: var(--color-paper-3);
-  animation: pop var(--dur-micro) var(--ease-out);
-}
-
-/* scored tiles settle in one after another */
-.tile.correct,
-.tile.present,
-.tile.absent {
-  animation: settle var(--dur-short) var(--ease-out) both;
-  animation-delay: var(--delay);
-}
-
-.tile.correct {
-  background: var(--color-correct);
-  border-color: var(--color-correct);
-  color: var(--color-correct-ink);
-}
-
-/* "wrong position" is never shown by colour alone: the border is dashed and one corner is marked */
-.tile.present {
-  background: var(--color-present);
-  border-color: var(--color-present-ink);
-  border-style: dashed;
-  color: var(--color-present-ink);
-}
-
-.tile.present::after,
-.key.present::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 26%;
-  aspect-ratio: 1;
-  background: var(--color-present-ink);
-  clip-path: polygon(0 0, 100% 0, 100% 100%);
-}
-
-/* ruled out: a flat mid-grey, lighter than an empty tile and the page behind it */
-.tile.absent {
-  background: var(--color-absent);
-  border-color: var(--color-absent);
-  color: var(--color-absent-ink);
-}
-
-/* a guess that was refused: the row turns red and gives one short nudge */
-.row.shake {
-  animation: nudge var(--dur-short) var(--ease-out);
-}
-
-.row.shake .tile {
-  border-color: var(--color-error);
-}
-
-@keyframes pop {
-  from { transform: scale(0.92); }
-}
-
-@keyframes settle {
-  from { opacity: 0.2; transform: scale(0.94); }
-}
-
-@keyframes nudge {
-  0%, 100% { transform: translateX(0); }
-  30% { transform: translateX(-4px); }
-  70% { transform: translateX(4px); }
-}
-
-/* the name sits on its own small line under the row, where it can't cover a tile;
-   wide screens move it beside the row */
-.guesser {
-  display: block;
-  margin-top: var(--space-3xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: right;
-  font-size: var(--text-xs);
-  font-weight: 500;
-  color: var(--color-muted);
-}
-
-/* ---------- on-screen keyboard ---------- */
-
-.keyboard {
-  display: grid;
-  gap: var(--space-2xs);
-  max-width: 32rem;
-  margin: var(--space-lg) auto 0;
-}
-
-.keyboard-row {
-  display: flex;
-  justify-content: center;
-  gap: var(--space-2xs);
-}
-
-.key {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  /* a tenth of the row, less the gaps between ten keys */
-  max-width: calc((100% - 9 * var(--space-2xs)) / 10);
-  height: var(--key-height);
-  padding: 0;
-  border: 2px solid transparent;
-  background: var(--color-paper-3);
-  color: var(--color-ink);
-  font-weight: 500;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition:
-    background-color var(--dur-micro) var(--ease-out),
-    transform var(--dur-micro) var(--ease-out);
-}
-
-.key.wide {
-  flex: 1.6;
-  /* one and a half keys, so the bottom row is exactly as wide as the top one */
-  max-width: calc((100% - 9 * var(--space-2xs)) * 0.15 + var(--space-3xs));
-  font-size: var(--text-xs);
-  text-transform: none;
-}
-
-@media (hover: hover) {
-  .key:hover:not(:disabled):not(.correct):not(.present):not(.absent) {
-    background: var(--color-rule-2);
-  }
-}
-
-.key:active:not(:disabled) {
-  transform: translateY(1px);
-}
-
-.key:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.key.correct {
-  background: var(--color-correct);
-  border-color: var(--color-correct);
-  color: var(--color-correct-ink);
-}
-
-.key.present {
-  background: var(--color-present);
-  border-color: var(--color-present-ink);
-  border-style: dashed;
-  color: var(--color-present-ink);
-}
-
-.key.absent {
-  background: var(--color-absent);
-  border-color: var(--color-absent);
-  color: var(--color-absent-ink);
-}
-
-/* ---------- sign-in ---------- */
-
-.auth-form {
-  display: grid;
-  gap: var(--space-md);
-  max-width: 24rem;
-  margin: var(--space-md) auto 0;
-  padding: var(--space-lg);
-  background: linear-gradient(-45deg, transparent var(--cut-large), var(--color-paper-2) 0);
-}
-
-.auth-heading {
-  font-size: var(--text-xl);
-}
-
-.field {
-  display: grid;
-  gap: var(--space-2xs);
-  color: var(--color-ink-2);
-  font-size: var(--text-sm);
-  font-weight: 500;
-}
-
-/* the border never changes width; focus is an outline drawn inside the field */
-.field input {
-  min-height: var(--control);
-  padding: 0 var(--space-sm);
-  border: var(--rule-hair) solid var(--color-muted);
-  outline: 2px solid transparent;
-  outline-offset: -3px;
-  background: var(--color-paper);
-  color: var(--color-ink);
-  font-size: var(--text-md);
-  font-weight: 400;
-}
-
-@media (hover: hover) {
-  .field input:hover {
-    border-color: var(--color-ink);
-  }
-}
-
-.field input:focus-visible {
-  outline-color: var(--color-focus);
-}
-
-.field-hint {
-  font-size: var(--text-sm);
-  color: var(--color-muted);
-}
-
-.auth-form .message {
-  margin: 0;
-  text-align: left;
-}
-
-.auth-form .new-game,
-.auth-form .link-button {
-  justify-self: start;
-}
-
-/* ---------- your games ---------- */
-
-.game-list {
-  margin-top: var(--space-2xl);
-}
-
-.game-list-heading {
-  max-width: none;
-  margin-bottom: var(--space-sm);
-  font-size: var(--text-lg);
-  text-align: center;
-}
-
-.game-list ul {
-  margin: 0 0 var(--space-xs);
-  padding: 0;
-  list-style: none;
-  border-bottom: var(--rule-hair) solid var(--color-rule);
-}
-
-.game-list li {
+.player + .player {
   border-top: var(--rule-hair) solid var(--color-rule);
 }
 
-/* one row per game: the length and the status on the first line, the detail under them */
+.players .link-button {
+  justify-self: start;
+}
+
+/* your games: one row per game, a hairline between rows */
+.game-list-heading {
+  max-width: none;
+}
+
+.game-list ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.game-list li + li {
+  border-top: var(--rule-hair) solid var(--color-rule);
+}
+
 .game-list-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
   gap: 0 var(--space-sm);
   width: 100%;
-  padding: var(--space-sm);
-  border: none;
-  background: transparent;
+  min-height: 48px;
+  padding: var(--space-2xs) var(--space-xs);
+  border: 0;
+  background: none;
   color: var(--color-ink);
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
   transition: background-color var(--dur-short) var(--ease-out);
 }
 
-@media (hover: hover) {
-  .game-list-item:hover:not(.current) {
-    background: var(--color-paper-2);
-  }
-}
-
-.game-list-item:active {
-  background: var(--color-rule);
-}
-
-.game-list-item:focus-visible {
-  outline-offset: -2px;
+.game-list-item:hover:not(.current) {
+  background: var(--color-paper-2);
 }
 
 /* the game on screen */
@@ -571,81 +300,434 @@
   background: var(--color-paper-3);
 }
 
+.game-list-item:focus-visible {
+  outline-offset: -2px;
+}
+
+/* the game in miniature: its guesses as rows of small squares, down the left of the row */
+.game-list-mini {
+  grid-row: 1 / span 2;
+  display: grid;
+  gap: var(--space-3xs);
+  min-width: 48px;
+}
+
+.game-list-mini > span {
+  display: flex;
+  gap: var(--space-3xs);
+}
+
+.game-list-mini i {
+  width: 8px;
+  height: 8px;
+  background: var(--color-absent);
+}
+
+.game-list-mini i.correct {
+  background: var(--color-correct);
+}
+
+.game-list-mini i.present {
+  background: var(--color-present);
+}
+
 .game-list-main {
-  font-weight: 500;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  line-height: 1.25;
 }
 
 .game-list-status {
-  white-space: nowrap;
-  color: var(--color-ink-2);
+  color: var(--color-muted);
   font-size: var(--text-sm);
+  font-weight: 500;
 }
 
 .game-list-status.won {
-  color: var(--color-accent);
-}
-
-.game-list-status.lost {
-  color: var(--color-muted);
+  color: var(--color-ink);
+  font-weight: 700;
 }
 
 .game-list-detail {
-  grid-column: 1 / -1;
+  grid-column: 2 / -1;
   color: var(--color-muted);
   font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
+  line-height: 1.25;
 }
 
-/* ---------- wide screens ---------- */
+/* ---------- the well: the board on the left, the keyboard on the right ---------- */
 
-/* The page stays one centred column at every width. Wide screens only get larger tiles,
-   and the guesser's name moves beside its row, where there is room next to the board. */
-@media (min-width: 60rem) {
-  :root {
-    --tile-max: 4rem;
+.well {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: var(--space-lg) 0 var(--space-lg) var(--space-xl);
+  border: var(--rule-bar) solid var(--color-ink);
+  background: var(--color-paper-2);
+}
+
+.well-board {
+  display: grid;
+  gap: var(--space-md);
+}
+
+/* the screen: the one ink printed as dots, fading from solid at the well's edge to nothing.
+   It has a strip of its own, so no letter or key ever sits on the dots. */
+.well-screen {
+  align-self: stretch;
+  margin-block: calc(-1 * var(--space-lg));
+  background: radial-gradient(var(--color-dot) var(--halftone-dot), transparent calc(var(--halftone-dot) + 0.5px)) 0 0 / var(--halftone-size) var(--halftone-size);
+  mask: linear-gradient(90deg, transparent 0%, var(--color-ink) 90%);
+}
+
+/* ---------- board ---------- */
+
+/* Tiles are 56px for a 5-letter word and shrink for longer ones, so an 8-letter board
+   still leaves room for the keyboard beside it. */
+.board {
+  --tile: min(56px, calc((400px - (var(--columns) - 1) * var(--space-2xs)) / var(--columns)));
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+/* each board row, with the name of the player who guessed beside it */
+.board-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(var(--columns), var(--tile));
+  gap: var(--space-2xs);
+}
+
+.tile {
+  display: grid;
+  place-items: center;
+  height: var(--tile);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: calc(var(--tile) * 0.5);
+  line-height: 1;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+/* a letter that has been typed but not submitted */
+.tile.filled {
+  box-shadow: inset 0 0 0 var(--rule-bar) var(--color-ink);
+}
+
+.tile.correct {
+  background: var(--color-correct);
+  color: var(--color-correct-ink);
+}
+
+.tile.present {
+  background: var(--color-present);
+  color: var(--color-present-ink);
+}
+
+.tile.absent {
+  background: var(--color-absent);
+  color: var(--color-absent-ink);
+}
+
+/* a guess that was refused: the row's tiles are ruled in the error colour. Nothing moves. */
+.row.shake .tile {
+  box-shadow: inset 0 0 0 var(--rule-bar) var(--color-error);
+}
+
+.guesser {
+  max-width: 6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+/* the line shown when the game ends. It sits above the board, where it is seen at once,
+   though it comes after the board in the page's reading order. */
+.result {
+  order: -1;
+  max-width: 24rem;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  line-height: 1.15;
+}
+
+/* the answer, set like the letters on the board */
+.result strong {
+  font-weight: var(--display-weight);
+  text-transform: uppercase;
+}
+
+/* ---------- on-screen keyboard ---------- */
+
+.keyboard {
+  display: grid;
+  gap: var(--space-xs);
+  justify-items: center;
+  justify-self: center;
+  /* as wide as its column allows, up to ten full-size keys and their gaps */
+  width: 100%;
+  max-width: 32rem;
+  min-width: 0;
+}
+
+.keyboard-row {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-xs);
+  width: 100%;
+}
+
+.key {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: var(--control);
+  height: 52px;
+  padding: 0;
+  border: 1px solid var(--color-ink);
+  border-radius: var(--radius-input);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color var(--dur-short) var(--ease-out);
+}
+
+.key:hover:not(:disabled):not(.correct):not(.present):not(.absent) {
+  background: var(--color-paper-3);
+}
+
+.key:active:not(:disabled) {
+  background: var(--color-rule);
+}
+
+.key:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.key.wide {
+  flex: 1.6 1 0;
+  max-width: 72px;
+  font-size: var(--text-sm);
+  text-transform: none;
+}
+
+.key.correct {
+  background: var(--color-correct);
+  color: var(--color-correct-ink);
+}
+
+.key.present {
+  background: var(--color-present);
+  color: var(--color-present-ink);
+}
+
+.key.absent {
+  background: var(--color-absent);
+  color: var(--color-absent-ink);
+}
+
+/* ---------- sign-in: how to play on the left, the form on the right ---------- */
+
+.welcome {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: var(--space-2xl);
+  align-items: start;
+  padding-top: var(--space-2xl);
+}
+
+.pitch {
+  display: grid;
+  gap: var(--space-lg);
+  justify-items: start;
+}
+
+.pitch-heading {
+  max-width: 13ch;
+  font-size: var(--text-3xl);
+}
+
+/* the three results as rows under an ink rule: a sample tile, then what it means */
+.legend {
+  display: grid;
+  width: 100%;
+  margin: 0;
+  border-top: var(--rule-bar) solid var(--color-ink);
+}
+
+.legend div {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding-block: var(--space-xs);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.legend .tile {
+  --tile: 44px;
+  width: var(--tile);
+}
+
+.legend dd {
+  margin: 0;
+}
+
+.auth-form {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-xl);
+  border: var(--rule-bar) solid var(--color-ink);
+  background: var(--color-paper-2);
+}
+
+.auth-heading {
+  max-width: none;
+}
+
+.field {
+  display: grid;
+  gap: var(--space-2xs);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.field input {
+  min-height: 48px;
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--color-ink);
+  border-radius: var(--radius-input);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-size: var(--text-md);
+  font-weight: 400;
+}
+
+.field input:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.field-hint {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.auth-form .message {
+  margin: 0;
+}
+
+.auth-form .new-game {
+  width: 100%;
+  min-height: 48px;
+}
+
+.auth-form .link-button {
+  justify-self: start;
+}
+
+/* ---------- narrow screens ---------- */
+
+/* Under a laptop's width the keyboard drops below the board, and the well comes before
+   the panels, so the game is the first thing on a phone. */
+@media (max-width: 68rem) {
+  .app {
+    display: flex;
+    flex-direction: column;
   }
 
-  .tile {
-    font-size: var(--text-3xl);
+  .label {
+    order: 3;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-lg);
+  }
+
+  .well {
+    order: 2;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    padding: var(--space-lg) var(--space-md);
+  }
+
+  .hint {
+    order: 2;
+  }
+
+  .message {
+    order: 1;
+  }
+
+  .well-screen {
+    display: none;
+  }
+
+  /* the board fills the well's width, less the room a guesser's name needs beside a row */
+  .board {
+    --tile: min(56px, calc((100cqi - 4.5rem - (var(--columns) - 1) * var(--space-2xs)) / var(--columns)));
+  }
+
+  .board-row {
+    gap: var(--space-xs);
   }
 
   .guesser {
-    position: absolute;
-    left: calc(100% + var(--space-sm));
-    top: 50%;
-    transform: translateY(-50%);
-    max-width: 9rem;
-    margin-top: 0;
-    text-align: left;
-    font-size: var(--text-sm);
+    max-width: 4rem;
+  }
+
+  .well-board {
+    container-type: inline-size;
+    width: min(100%, 26rem);
+    justify-items: center;
+  }
+
+  .welcome {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-xl);
+    padding-top: var(--space-xl);
   }
 }
 
-/* ---------- reduced motion ---------- */
-
-/* nothing animates or slides for players who have asked their device for less motion */
-@media (prefers-reduced-motion: reduce) {
-  .tile,
-  .tile.filled,
-  .tile.correct,
-  .tile.present,
-  .tile.absent,
-  .row.shake {
-    animation: none;
+@media (max-width: 40rem) {
+  .well {
+    padding: var(--space-md) var(--space-xs);
   }
 
+  .auth-form {
+    padding: var(--space-lg) var(--space-md);
+  }
+
+  .keyboard-row {
+    gap: var(--space-2xs);
+  }
+
+  .key.wide {
+    font-size: var(--text-xs);
+  }
+
+  /* the name alone says who is signed in; the words before it would crowd the bar */
+  .signed-in-label {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
   .new-game,
-  .link-button,
   .key,
   .length-option,
   .game-list-item {
     transition: none;
-  }
-
-  .new-game:active:not(:disabled),
-  .link-button:active,
-  .key:active:not(:disabled) {
-    transform: none;
   }
 }

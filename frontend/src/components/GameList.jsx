@@ -33,11 +33,22 @@ function GameList({ games, currentGameId, hasMore, onOpen, onLoadMore }) {
                   event.currentTarget.blur()
                 }}
               >
+                {/* the game in miniature: one row of small squares per guess, coloured by result.
+                    Decoration only; the words beside it say the same thing. */}
+                <span className="game-list-mini" aria-hidden="true">
+                  {game.guesses.map((guess) => (
+                    <span key={guess.number}>
+                      {guess.results.map((result, index) => (
+                        <i key={index} className={result} />
+                      ))}
+                    </span>
+                  ))}
+                </span>
                 <span className="game-list-main">{game.word_length} letters</span>
                 <span className={'game-list-status ' + game.status}>{STATUS_TEXT[game.status]}</span>
                 <span className="game-list-detail">
                   {guessesUsed} of {game.max_guesses} guesses
-                  {game.players.length > 1 && ' · ' + game.players.length + ' players'}
+                  {game.players.length > 1 && ', ' + game.players.length + ' players'}
                 </span>
               </button>
             </li>
