@@ -93,7 +93,11 @@ function GameScreen({ user, onSignOut }) {
       {isRulesOpen && (
         <section id="rules-panel" ref={rulesPanelRef} className="rules-panel" aria-label="How to play">
           <h2 className="rules-heading">How to play</h2>
-          <Rules />
+          <Rules
+            minLength={config.min_word_length}
+            maxLength={config.max_word_length}
+            extraGuesses={config.extra_guesses}
+          />
           <p className="field-hint">Press Esc or click outside to close. The ? key opens this again.</p>
         </section>
       )}

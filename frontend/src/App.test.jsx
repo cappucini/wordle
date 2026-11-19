@@ -376,6 +376,20 @@ describe('App: the "How to play" panel', () => {
     expect(panel.getByText(/one more guess than the word has letters/)).toBeInTheDocument()
   })
 
+  it("takes its numbers from the game's settings, not from fixed text", async () => {
+    // the range of word lengths can change on the backend; the rules must follow it
+    api.getConfig.mockResolvedValue({ ...CONFIG, min_word_length: 4, max_word_length: 12, extra_guesses: 2 })
+    await renderSignedIn()
+
+    await userEvent.click(rulesButton())
+
+    expect(
+      within(rulesPanel()).getByText(
+        'Words run from 4 to 12 letters, and you get 2 more guesses than the word has letters.',
+      ),
+    ).toBeInTheDocument()
+  })
+
   it('leaves the board on screen behind it', async () => {
     await renderPlaying()
 

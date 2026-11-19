@@ -10,11 +10,19 @@ const RESULTS = [
 ]
 
 // The rules themselves: how long words are, how many guesses, and what each colour means.
-export function Rules() {
+// The numbers are the game's settings. The in-game panel passes the real ones from the
+// backend; the sign-in page has not loaded them yet, so it uses these defaults, which
+// match the backend's own (backend/app/domain/rules.py).
+export function Rules({ minLength = 5, maxLength = 8, extraGuesses = 1 }) {
+  const lengths =
+    minLength === maxLength
+      ? `Words have ${minLength} letters`
+      : `Words run from ${minLength} to ${maxLength} letters`
+  const guesses = extraGuesses === 1 ? 'one more guess' : `${extraGuesses} more guesses`
   return (
     <>
       <p className="lead">
-        Words run from 5 to 8 letters, and you get one more guess than the word has letters.
+        {lengths}, and you get {guesses} than the word has letters.
       </p>
       <dl className="legend">
         {RESULTS.map(({ letter, result, meaning }) => (

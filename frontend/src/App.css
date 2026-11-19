@@ -95,17 +95,24 @@ h3 {
   display: none;
 }
 
-/* Dropped down under the bar, at the right, over the page but not blocking it. It is a
-   sheet of the same paper with the same ink border as the well, so it reads as part of
-   the page and not a pop-up window. */
+/* Dropped down from the top right, over the page but not blocking it. It is a sheet of the
+   same paper with the same ink border as the well, so it reads as part of the page and
+   not a pop-up window.
+
+   It is pinned to the window (position: fixed), not to the page, so it appears where the
+   player is looking even after scrolling down a tall board. Its right edge lines up with
+   the page's content: the gutter, plus half of whatever is left over on a wide window. */
 .rules-panel {
-  position: absolute;
+  position: fixed;
   top: calc(var(--bar) + var(--space-sm));
-  right: var(--gutter);
+  right: max(var(--gutter), calc((100% - var(--container)) / 2 + var(--gutter)));
   z-index: var(--z-dropdown);
   display: grid;
   gap: var(--space-md);
   width: min(24rem, 100% - 2 * var(--gutter));
+  /* on a short window it scrolls inside itself and never runs off the bottom */
+  max-height: calc(100dvh - var(--bar) - 2 * var(--space-sm));
+  overflow-y: auto;
   padding: var(--space-lg);
   border: var(--rule-bar) solid var(--color-ink);
   background: var(--color-paper);
@@ -304,6 +311,8 @@ h3 {
 
 .players .link-button {
   justify-self: start;
+  /* when copying fails this button holds a whole sentence, which must wrap inside the panel */
+  white-space: normal;
 }
 
 /* your games: one row per game, a hairline between rows */
@@ -714,8 +723,24 @@ h3 {
 
 /* ---------- narrow screens ---------- */
 
-/* Under a laptop's width the keyboard drops below the board, and the well comes before
-   the panels, so the game is the first thing on a phone. */
+/* A smaller laptop window: there is no longer room for full-size keys beside a wide board
+   (eight letters, plus the players' names), so the keyboard moves under the board.
+   The three panels stay across the top. */
+@media (max-width: 76rem) {
+  .well {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    padding: var(--space-lg) var(--space-md);
+  }
+
+  .well-screen {
+    display: none;
+  }
+}
+
+
+/* Tablets and phones: the well comes before the panels, so the game is the first thing
+   on the screen, and the panels stack in one column under it. */
 @media (max-width: 68rem) {
   .app {
     display: flex;
@@ -730,9 +755,6 @@ h3 {
 
   .well {
     order: 2;
-    grid-template-columns: minmax(0, 1fr);
-    justify-items: center;
-    padding: var(--space-lg) var(--space-md);
   }
 
   .hint {
@@ -741,10 +763,6 @@ h3 {
 
   .message {
     order: 1;
-  }
-
-  .well-screen {
-    display: none;
   }
 
   /* the board fills the well's width, less the room a guesser's name needs beside a row */
@@ -819,6 +837,64 @@ h3 {
     left: var(--gutter);
     width: auto;
     padding: var(--space-md);
+  }
+}
+
+/* the narrowest phones: a long name gets less room, so it cannot run into the title */
+@media (max-width: 24rem) {
+  .signed-in strong {
+    max-width: 3.5rem;
+  }
+}
+
+@media (max-width: 21rem) {
+  .signed-in strong {
+    max-width: 2.5rem;
+  }
+}
+
+/* ---------- high-contrast mode ---------- */
+
+/* Windows' high-contrast setting ("forced colours") replaces background colours and removes
+   shadows, which would leave every tile looking the same and typed letters with no outline.
+   Green, yellow and grey are the game's information, not decoration, so played letters keep
+   their colours; everything else gets a real border in the player's own text colour. */
+@media (forced-colors: active) {
+  .tile.correct,
+  .tile.present,
+  .tile.absent,
+  .key.correct,
+  .key.present,
+  .key.absent,
+  .game-list-mini i {
+    forced-color-adjust: none;
+  }
+
+  .tile {
+    border: 1px solid CanvasText;
+  }
+
+  /* typed but not submitted: a heavier border, standing in for the ink outline */
+  .tile.filled {
+    border-width: var(--rule-bar);
+  }
+
+  /* a refused guess: a dashed border, standing in for the red outline */
+  .row.shake .tile {
+    border: var(--rule-bar) dashed CanvasText;
+  }
+
+  /* these three are told apart from their neighbours by a fill, which this mode removes */
+  .new-game {
+    border: 2px solid ButtonText;
+  }
+
+  .length-option.selected {
+    border-width: var(--rule-bar);
+  }
+
+  .game-list-item.current {
+    border-left: var(--space-xs) solid Highlight;
   }
 }
 
