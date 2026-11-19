@@ -1,4 +1,6 @@
-// Shown beside the sign-in form: what the game is, and what the three colours mean.
+// The rules of the game, written once and shown in two places:
+//   - beside the sign-in form (HowToPlay, the default export)
+//   - in the "How to play" panel a player can open from the bar while playing (Rules)
 // The sample tiles are decoration (hidden from screen readers); the sentence beside each
 // one carries the meaning.
 const RESULTS = [
@@ -7,10 +9,10 @@ const RESULTS = [
   { letter: 't', result: 'absent', meaning: 'Grey: not in the word.' },
 ]
 
-function HowToPlay() {
+// The rules themselves: how long words are, how many guesses, and what each colour means.
+export function Rules() {
   return (
-    <section className="pitch" aria-label="How to play">
-      <h2 className="pitch-heading">Guess the word, alone or together.</h2>
+    <>
       <p className="lead">
         Words run from 5 to 8 letters, and you get one more guess than the word has letters.
       </p>
@@ -26,6 +28,16 @@ function HowToPlay() {
           </div>
         ))}
       </dl>
+    </>
+  )
+}
+
+// The sign-in page's version: a headline, then the rules.
+function HowToPlay() {
+  return (
+    <section className="pitch" aria-label="How to play">
+      <h2 className="pitch-heading">Guess the word, alone or together.</h2>
+      <Rules />
     </section>
   )
 }

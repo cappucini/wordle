@@ -86,6 +86,7 @@ The interface is styled as a screen-printed label: cream paper, a fat slab typef
 
 - Every colour, font and size is a named value in `frontend/src/index.css`; `frontend/src/App.css` only uses those names, so the look can be changed in one place.
 - The two fonts (Ultra and Chivo) are bundled with the app, so the page loads nothing from other sites.
+- "How to play" in the top bar (or the `?` key) opens the rules in a small panel without leaving the game. Escape or a click outside closes it, and typing is paused while it is open.
 - The game screen is three panels across the top (new game, players, your games) and one boxed panel below with the board and the keyboard side by side. On a phone the board comes first and the panels stack under it.
 
 **Key files to modify:**
@@ -327,12 +328,12 @@ Run these from the repository root.
 | Command | What it runs | Tests | Takes about |
 |---|---|---|---|
 | `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 261 | 2 s |
-| `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 261 | 4 s |
+| `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 275 | 4 s |
 | `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres. | 175 | 9 s |
 | `make test-security` | Security tests: sign-in and CSRF on every route, who may open the WebSocket, log-in and sign-up limits, hashed secrets, game access, the hidden answer, hostile input. | 221 | 19 s |
 | `make test-concurrency` | Race tests: joins, guesses and sign-ups sent at the same instant. | 8 | 5 s |
 | `make test-e2e` | End-to-end tests: headless Chromium driving the real frontend and backend through seven user journeys. | 7 | 20 s |
-| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 933 | 60 s |
+| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 947 | 60 s |
 
 The first run of a layer is slower, because Docker builds its image.
 

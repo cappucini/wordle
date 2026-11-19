@@ -336,3 +336,135 @@ describe('App: when something unexpected breaks while drawing the page', () => {
     expect(screen.getByRole('heading', { name: 'Wordle' })).toBeInTheDocument() // the title is still there
   })
 })
+
+describe('App: the "How to play" panel', () => {
+  function rulesButton() {
+    return screen.getByRole('button', { name: 'How to play' })
+  }
+
+  function rulesPanel() {
+    return screen.queryByRole('region', { name: 'How to play' })
+  }
+
+  async function renderPlaying() {
+    await renderSignedIn()
+    await userEvent.click(screen.getByRole('button', { name: 'New game' }))
+    await screen.findAllByRole('img')
+  }
+
+  function typedLetters() {
+    return screen.getAllByRole('img').slice(0, 5).map((tile) => tile.textContent).join('')
+  }
+
+  it('is closed until asked for', async () => {
+    await renderSignedIn()
+
+    expect(rulesButton()).toHaveAttribute('aria-expanded', 'false')
+    expect(rulesPanel()).toBeNull()
+  })
+
+  it('opens from the button in the bar and shows the rules', async () => {
+    await renderPlaying()
+
+    await userEvent.click(rulesButton())
+
+    expect(rulesButton()).toHaveAttribute('aria-expanded', 'true')
+    const panel = within(rulesPanel())
+    expect(panel.getByText('Green: the right letter in the right place.')).toBeInTheDocument()
+    expect(panel.getByText('Yellow: in the word, but somewhere else.')).toBeInTheDocument()
+    expect(panel.getByText('Grey: not in the word.')).toBeInTheDocument()
+    expect(panel.getByText(/one more guess than the word has letters/)).toBeInTheDocument()
+  })
+
+  it('leaves the board on screen behind it', async () => {
+    await renderPlaying()
+
+    await userEvent.click(rulesButton())
+
+    expect(screen.getAllByRole('img')).toHaveLength(30)
+    expect(screen.getByRole('button', { name: 'Enter' })).toBeInTheDocument()
+  })
+
+  it('closes when the button is clicked again', async () => {
+    await renderPlaying()
+    await userEvent.click(rulesButton())
+
+    await userEvent.click(rulesButton())
+
+    expect(rulesPanel()).toBeNull()
+  })
+
+  it('closes on Escape', async () => {
+    await renderPlaying()
+    await userEvent.click(rulesButton())
+
+    await userEvent.keyboard('{Escape}')
+
+    expect(rulesPanel()).toBeNull()
+    expect(rulesButton()).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('closes when the player clicks anywhere outside it', async () => {
+    await renderPlaying()
+    await userEvent.click(rulesButton())
+
+    await userEvent.click(screen.getByRole('region', { name: 'Players' }))
+
+    expect(rulesPanel()).toBeNull()
+  })
+
+  it('stays open when the player clicks inside it', async () => {
+    await renderPlaying()
+    await userEvent.click(rulesButton())
+
+    await userEvent.click(within(rulesPanel()).getByText('Grey: not in the word.'))
+
+    expect(rulesPanel()).not.toBeNull()
+  })
+
+  it('opens and closes with the ? key', async () => {
+    await renderPlaying()
+
+    await userEvent.keyboard('?')
+    expect(rulesPanel()).not.toBeNull()
+
+    await userEvent.keyboard('?')
+    expect(rulesPanel()).toBeNull()
+  })
+
+  it('does not type on the board while it is open', async () => {
+    await renderPlaying()
+    await userEvent.click(rulesButton())
+
+    await userEvent.keyboard('crane{Enter}')
+
+    expect(typedLetters()).toBe('')
+    expect(api.submitGuess).not.toHaveBeenCalled()
+  })
+
+  it('keeps a half-typed word, and typing carries on once it is closed', async () => {
+    await renderPlaying()
+    await userEvent.keyboard('cr')
+
+    await userEvent.keyboard('?')
+    await userEvent.keyboard('{Escape}')
+    await userEvent.keyboard('a')
+
+    expect(typedLetters()).toBe('cra')
+  })
+
+  it('is available before any game is started', async () => {
+    await renderSignedIn()
+
+    await userEvent.click(rulesButton())
+
+    expect(rulesPanel()).not.toBeNull()
+  })
+
+  it('is not offered on the sign-in page, which already shows the rules', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Sign in to play' })
+
+    expect(screen.queryByRole('button', { name: 'How to play' })).toBeNull()
+  })
+})

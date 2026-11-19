@@ -154,6 +154,19 @@ describe('GameList', () => {
     expect(container.querySelectorAll('.game-list-mini i')).toHaveLength(0)
   })
 
+  it('draws every guess of the longest possible game, nine rows of eight', () => {
+    // the miniature has a fixed size (see App.css), so the row stays the same height
+    const nineGuesses = Array.from({ length: 9 }, () => makeGuess('notebook', 'APPPPAAA'))
+    const game = makeGame({ id: 'long', word_length: 8, status: 'lost', guesses: nineGuesses })
+
+    const { container } = render(
+      <GameList games={[game]} currentGameId={null} hasMore={false} onOpen={() => {}} onLoadMore={() => {}} />,
+    )
+
+    expect(container.querySelectorAll('.game-list-mini > span')).toHaveLength(9)
+    expect(container.querySelectorAll('.game-list-mini i')).toHaveLength(72)
+  })
+
   it('marks the game that is open', () => {
     renderList({ games: [makeGame({ id: 'a' }), makeGame({ id: 'b' })], currentGameId: 'b' })
 

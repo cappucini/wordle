@@ -88,6 +88,37 @@ h3 {
   outline-color: var(--color-accent-ink);
 }
 
+/* ---------- the "How to play" panel ---------- */
+
+/* on a wide screen the button reads "How to play"; on a phone, "Rules" */
+.rules-short {
+  display: none;
+}
+
+/* Dropped down under the bar, at the right, over the page but not blocking it. It is a
+   sheet of the same paper with the same ink border as the well, so it reads as part of
+   the page and not a pop-up window. */
+.rules-panel {
+  position: absolute;
+  top: calc(var(--bar) + var(--space-sm));
+  right: var(--gutter);
+  z-index: var(--z-dropdown);
+  display: grid;
+  gap: var(--space-md);
+  width: min(24rem, 100% - 2 * var(--gutter));
+  padding: var(--space-lg);
+  border: var(--rule-bar) solid var(--color-ink);
+  background: var(--color-paper);
+}
+
+.rules-heading {
+  max-width: none;
+}
+
+.rules-panel .lead {
+  font-size: var(--text-md);
+}
+
 /* ---------- buttons ---------- */
 
 /* the one filled button: "New game", and the sign-in form's submit */
@@ -306,22 +337,29 @@ h3 {
   outline-offset: -2px;
 }
 
-/* the game in miniature: its guesses as rows of small squares, down the left of the row */
+/* The game in miniature: its guesses as rows of small squares, down the left of the row.
+   It has a fixed size, so a long game (up to nine guesses of eight letters) fits the same
+   box as a short one: the squares are 8px when there is room and shrink when there is not. */
 .game-list-mini {
   grid-row: 1 / span 2;
-  display: grid;
-  gap: var(--space-3xs);
-  min-width: 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  width: 48px;
+  height: 40px;
 }
 
 .game-list-mini > span {
   display: flex;
-  gap: var(--space-3xs);
+  flex: 0 1 8px;
+  gap: 1px;
+  min-height: 0;
 }
 
 .game-list-mini i {
-  width: 8px;
-  height: 8px;
+  flex: 0 1 8px;
+  min-width: 0;
   background: var(--color-absent);
 }
 
@@ -722,6 +760,32 @@ h3 {
   /* the name alone says who is signed in; the words before it would crowd the bar */
   .signed-in-label {
     display: none;
+  }
+
+  .signed-in strong {
+    max-width: 6.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .signed-in .link-button {
+    margin-left: var(--space-2xs);
+  }
+
+  .rules-long {
+    display: none;
+  }
+
+  .rules-short {
+    display: inline;
+  }
+
+  /* on a phone the panel is a sheet across the screen, under the bar */
+  .rules-panel {
+    left: var(--gutter);
+    width: auto;
+    padding: var(--space-md);
   }
 }
 

@@ -256,6 +256,30 @@ describe('useGame: typing', () => {
     expect(result.current.typedWord).toBe('cr')
   })
 
+  it('ignores the physical keyboard while typing is paused, and keeps what was typed', async () => {
+    api.createGame.mockResolvedValue(NEW_GAME)
+    const { result, rerender } = renderHook(({ paused }) => useGame(ERICA, { isTypingPaused: paused }), {
+      initialProps: { paused: false },
+    })
+    await waitFor(() => expect(result.current.config).not.toBeNull())
+    await act(() => result.current.startGame())
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'c' })
+    })
+
+    rerender({ paused: true })
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'r' })
+    })
+    expect(result.current.typedWord).toBe('c')
+
+    rerender({ paused: false })
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'r' })
+    })
+    expect(result.current.typedWord).toBe('cr')
+  })
+
   it.each(['ctrlKey', 'metaKey', 'altKey'])('leaves browser shortcuts alone (%s held)', async (modifier) => {
     const result = await renderStartedGame()
 

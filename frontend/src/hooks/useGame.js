@@ -39,7 +39,9 @@ const REFUSED = [SOCKET_CLOSED_NOT_A_PLAYER, SOCKET_CLOSED_GAME_NOT_FOUND]
 // Components only display what this returns; they never call the API themselves.
 // This is called from GameScreen.jsx, which is only shown once a player has signed in.
 // `user` is the signed-in player ({ id, username }).
-export function useGame(user) {
+// `isTypingPaused` is true while something is open over the game (the "How to play" panel),
+// so key presses meant for it are not typed onto the board.
+export function useGame(user, { isTypingPaused = false } = {}) {
   const userId = user.id
   // Every call useState() dedicates a piece of state with a given starting value.
   // They belong to the page's working memory, and will be wiped on refresh.
@@ -451,6 +453,9 @@ export function useGame(user) {
   // Listen to the physical keyboard.
   useEffect(() => {
     function handleKeyDown(event) {
+      if (isTypingPaused) {
+        return // the board is not listening right now; what was typed so far is kept
+      }
       // ignore browser event if Control, Command, or Option was held during a key press
       // Otherwise if you want to Cmd-R(Refresh), Cmd-C (copy), CmD-A (select all),
       // you may end up typing letters in your guess.
@@ -471,7 +476,7 @@ export function useGame(user) {
     // how to stop listening
     return () => window.removeEventListener('keydown', handleKeyDown)
     // restart listening when pressKey is replaced
-  }, [pressKey])
+  }, [pressKey, isTypingPaused])
 
   return {
     config,
