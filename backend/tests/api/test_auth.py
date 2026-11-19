@@ -1,0 +1,339 @@
+"""Accounts and sign-ins: POST /users, POST /sessions, GET /users/me, DELETE /sessions/current."""
+
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from tests.support import API, CSRF_HEADER, PASSWORD, SESSION_COOKIE
+
+NOT_AUTHENTICATED = {"code": "NOT_AUTHENTICATED", "detail": "Sign in to continue"}
+INVALID_CREDENTIALS = {"code": "INVALID_CREDENTIALS", "detail": "Wrong username or password"}
+
+
+def set_session_expiry(db, when: datetime) -> None:
+    from app.db import AuthSessionRow
+
+    for row in db.query(AuthSessionRow).all():
+        row.expires_at = when
+    db.commit()
+
+
+# ---------- sign up ----------
+
+
+def test_sign_up_creates_the_account_and_signs_in(client):
+    response = client.post(f"{API}/users", json={"username": "erica", "password": PASSWORD})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert set(body) == {"user", "csrf_token"}
+    assert set(body["user"]) == {"id", "username"}
+    assert body["user"]["username"] == "erica"
+    assert isinstance(body["csrf_token"], str) and len(body["csrf_token"]) >= 43
+    assert SESSION_COOKIE in response.cookies
+
+    # the cookie alone is enough to be recognised afterwards
+    me = client.get(f"{API}/users/me")
+    assert me.status_code == 200
+    assert me.json() == body
+
+
+def test_sign_up_stores_the_username_trimmed_and_lowercased(client):
+    response = client.post(
+        f"{API}/users", json={"username": "  Erica_1 ", "password": PASSWORD}
+    )
+
+    assert response.status_code == 201
+    assert response.json()["user"]["username"] == "erica_1"
+
+
+@pytest.mark.parametrize("second_spelling", ["erica", "ERICA", " Erica "])
+def test_sign_up_with_a_taken_username_is_refused(client, new_client, second_spelling):
+    client.post(f"{API}/users", json={"username": "erica", "password": PASSWORD})
+
+    response = new_client().post(
+        f"{API}/users", json={"username": second_spelling, "password": "another password"}
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "code": "USERNAME_TAKEN",
+        "detail": "The username 'erica' is already taken",
+    }
+    assert SESSION_COOKIE not in response.cookies
+
+
+@pytest.mark.parametrize(
+    "body, field",
+    [
+        pytest.param({"username": "ab", "password": PASSWORD}, "username", id="username too short"),
+        pytest.param({"username": "a" * 21, "password": PASSWORD}, "username", id="username too long"),
+        pytest.param({"username": "eri ca", "password": PASSWORD}, "username", id="username with a space"),
+        pytest.param({"username": "erica!", "password": PASSWORD}, "username", id="username with punctuation"),
+        pytest.param({"username": "erica", "password": "short"}, "password", id="password too short"),
+        pytest.param({"username": "erica", "password": "p" * 129}, "password", id="password too long"),
+        pytest.param({"username": "erica"}, "password", id="password missing"),
+        pytest.param({"password": PASSWORD}, "username", id="username missing"),
+        pytest.param(
+            {"username": "erica", "password": PASSWORD, "is_admin": True}, "is_admin",
+            id="unknown field",
+        ),
+    ],
+)
+def test_sign_up_with_an_invalid_body_is_refused(client, body, field):
+    response = client.post(f"{API}/users", json=body)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "INVALID_REQUEST"
+    # the detail names the field that is wrong
+    assert response.json()["detail"].startswith(f"{field}: ")
+    assert SESSION_COOKIE not in response.cookies
+
+
+def test_request_body_that_is_not_json_is_refused(client):
+    response = client.post(
+        f"{API}/users", content="{not json", headers={"Content-Type": "application/json"}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "INVALID_REQUEST"
+    assert response.json()["detail"].startswith("body: ")
+
+
+# ---------- log in ----------
+
+
+def test_log_in_with_the_right_password(player, client):
+    response = client.post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["user"] == {"id": player.id, "username": player.username}
+    assert SESSION_COOKIE in response.cookies
+    # a new sign-in is a new session, with its own CSRF token
+    assert body["csrf_token"] != player.csrf_token
+
+    assert client.get(f"{API}/users/me").json() == body
+
+
+def test_log_in_ignores_the_case_of_the_username(player, client):
+    response = client.post(
+        f"{API}/sessions",
+        json={"username": player.username.upper(), "password": player.password},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["user"]["id"] == player.id
+
+
+def test_log_in_with_the_wrong_password_is_refused(player, client):
+    response = client.post(
+        f"{API}/sessions", json={"username": player.username, "password": "wrong password"}
+    )
+
+    assert response.status_code == 401
+    assert response.json() == INVALID_CREDENTIALS
+    assert SESSION_COOKIE not in response.cookies
+    assert client.get(f"{API}/users/me").status_code == 401
+
+
+def test_log_in_with_an_unknown_username_is_refused(client):
+    response = client.post(
+        f"{API}/sessions", json={"username": "nobody", "password": PASSWORD}
+    )
+
+    assert response.status_code == 401
+    assert response.json() == INVALID_CREDENTIALS
+
+
+def test_passwords_are_case_sensitive(make_player, client):
+    player = make_player(password="Correct Horse")
+
+    response = client.post(
+        f"{API}/sessions", json={"username": player.username, "password": "correct horse"}
+    )
+
+    assert response.status_code == 401
+    assert response.json() == INVALID_CREDENTIALS
+
+
+def test_log_in_with_a_password_too_short_to_exist_is_an_invalid_request(player, client):
+    # the same shape rules apply to both forms; the frontend words this as "wrong password"
+    response = client.post(
+        f"{API}/sessions", json={"username": player.username, "password": "short"}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "INVALID_REQUEST"
+
+
+# ---------- who is signed in ----------
+
+
+def test_current_user_returns_the_user_and_the_csrf_token(player):
+    response = player.get("/users/me")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "user": {"id": player.id, "username": player.username},
+        "csrf_token": player.csrf_token,
+    }
+
+
+def test_no_session_cookie_is_not_authenticated(client):
+    response = client.get(f"{API}/users/me")
+
+    assert response.status_code == 401
+    assert response.json() == NOT_AUTHENTICATED
+
+
+def test_unknown_session_cookie_is_not_authenticated(client):
+    client.cookies.set(SESSION_COOKIE, "a-token-this-server-never-issued")
+
+    response = client.get(f"{API}/users/me")
+
+    assert response.status_code == 401
+    assert response.json() == NOT_AUTHENTICATED
+
+
+@pytest.mark.parametrize(
+    "method, path",
+    [
+        ("GET", "/games"),
+        ("POST", "/games"),
+        ("GET", "/games/3f2b8c1e-0000-4000-8000-000000000001"),
+        ("POST", "/games/3f2b8c1e-0000-4000-8000-000000000001/players"),
+        ("GET", "/games/3f2b8c1e-0000-4000-8000-000000000001/guesses"),
+        ("POST", "/games/3f2b8c1e-0000-4000-8000-000000000001/guesses"),
+        ("DELETE", "/sessions/current"),
+    ],
+)
+def test_routes_that_need_a_sign_in_refuse_a_visitor(client, method, path):
+    response = client.request(method, API + path, json={"word_guessed": "crane"})
+
+    assert response.status_code == 401
+    assert response.json() == NOT_AUTHENTICATED
+
+
+def test_expired_session_is_refused_and_removed(player, db):
+    from app.db import AuthSessionRow
+
+    set_session_expiry(db, datetime.now(timezone.utc) - timedelta(seconds=1))
+
+    response = player.get("/users/me")
+
+    assert response.status_code == 401
+    assert response.json() == {
+        "code": "NOT_AUTHENTICATED",
+        "detail": "Your sign-in has expired. Sign in again",
+    }
+    # the expired row is deleted, so the next attempt is simply an unknown session
+    db.expire_all()
+    assert db.query(AuthSessionRow).count() == 0
+    assert player.get("/users/me").json() == NOT_AUTHENTICATED
+
+
+def test_expired_session_cannot_change_anything(player, db):
+    set_session_expiry(db, datetime.now(timezone.utc) - timedelta(days=1))
+
+    response = player.post("/games", json={"word_length": 5})
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "NOT_AUTHENTICATED"
+
+
+def test_session_that_has_not_expired_yet_still_works(player, db):
+    set_session_expiry(db, datetime.now(timezone.utc) + timedelta(minutes=1))
+
+    assert player.get("/users/me").status_code == 200
+
+
+def test_new_session_lasts_seven_days(player, db):
+    from app.db import AuthSessionRow
+
+    session_row = db.query(AuthSessionRow).one()
+
+    lifetime = session_row.expires_at - session_row.created_at
+    assert abs(lifetime - timedelta(days=7)) < timedelta(seconds=5)
+
+
+# ---------- log out ----------
+
+
+def test_log_out_ends_the_session(player):
+    response = player.delete("/sessions/current")
+
+    assert response.status_code == 204
+    assert response.content == b""
+    assert player.get("/users/me").status_code == 401
+
+
+def test_log_out_ends_the_session_on_the_server_not_just_the_cookie(player):
+    token = player.client.cookies.get(SESSION_COOKIE)
+    player.delete("/sessions/current")
+
+    # put the old cookie back, as someone who had copied it would
+    player.client.cookies.set(SESSION_COOKIE, token)
+
+    assert player.get("/users/me").status_code == 401
+
+
+def test_log_out_leaves_the_users_other_sessions_signed_in(player, client):
+    second = client.post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+    assert second.status_code == 201
+
+    player.delete("/sessions/current")
+
+    assert client.get(f"{API}/users/me").status_code == 200
+
+
+def test_user_can_log_in_again_after_logging_out(player, client):
+    player.delete("/sessions/current")
+
+    response = client.post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+
+    assert response.status_code == 201
+
+
+# ---------- CSRF token ----------
+
+
+def test_request_that_changes_something_without_a_csrf_token_is_refused(player):
+    response = player.client.post(f"{API}/games", json={"word_length": 5})
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "code": "CSRF_CHECK_FAILED",
+        "detail": "This request is missing its CSRF token",
+    }
+    assert player.get("/games").json()["items"] == []
+
+
+def test_request_with_a_wrong_csrf_token_is_refused(player):
+    response = player.client.post(
+        f"{API}/games", json={"word_length": 5}, headers={CSRF_HEADER: "wrong"}
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "code": "CSRF_CHECK_FAILED",
+        "detail": "This request's CSRF token is not valid",
+    }
+
+
+def test_log_out_without_a_csrf_token_is_refused_and_stays_signed_in(player):
+    response = player.client.delete(f"{API}/sessions/current")
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "CSRF_CHECK_FAILED"
+    assert player.get("/users/me").status_code == 200
+
+
+def test_reading_does_not_need_a_csrf_token(player):
+    assert player.client.get(f"{API}/games").status_code == 200
