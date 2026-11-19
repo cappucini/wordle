@@ -6,7 +6,11 @@ from sqlalchemy.orm import Session
 from app.db import WordRow
 from app.domain.rules import MAX_WORD_LENGTH, MIN_WORD_LENGTH
 
-# the folder holding answers_5.txt, valid_5.txt, and so on
+# The folder holding answers_5.txt, valid_5.txt, and so on.
+# The 5-letter files are the original Wordle lists, used exactly as published: its answers,
+# and the further words it accepted as guesses. The 6 to 8 letter files are built by
+# backend/scripts/build_word_lists.py, because no official lists exist for those lengths.
+# Where each comes from is described under "Word Lists" in the README.
 DATA_DIR = Path(__file__).parent / "data"
 
 

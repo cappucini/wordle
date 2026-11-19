@@ -222,19 +222,45 @@ docker compose exec db psql -U wordle -d wordle -c "CREATE INDEX IF NOT EXISTS i
 
 The game uses two word lists for each word length (5 to 8 letters), stored in `backend/app/words/data/`:
 
-- `valid_N.txt` - every N-letter word accepted as a guess
-- `answers_N.txt` - the smaller set of common words that can be chosen as a game's answer
+- `valid_N.txt` - every N-letter word accepted as a guess (this includes the answers)
+- `answers_N.txt` - the smaller set of familiar words that can be chosen as a game's answer
+
+A guess is accepted only if it is in `valid_N.txt`; anything else is refused with "not in the word list". A game's answer is always picked from `answers_N.txt`.
 
 These files are committed to the repository and loaded into the database automatically when the backend starts. **You do not need to rebuild them to run the app.**
 
-**Sources**
+| Length | Answers | Accepted guesses | Where they come from |
+|---|---|---|---|
+| 5 | 2,315 | 12,972 | The original Wordle lists, copied in unchanged |
+| 6 | 981 | 15,232 | Built by `backend/scripts/build_word_lists.py` |
+| 7 | 945 | 23,109 | Built by `backend/scripts/build_word_lists.py` |
+| 8 | 766 | 28,420 | Built by `backend/scripts/build_word_lists.py` |
+
+**5 letters: the original Wordle lists**
+
+The 5-letter files are the two lists from the original Wordle game: its 2,315 answers, and the 10,657 further words it accepted as guesses. They were taken from these published copies:
+
+- Answers: <https://gist.github.com/cfreshman/a03ef2cba789d8cf00c08f767e0fad7b>
+- Other accepted guesses: <https://gist.github.com/cfreshman/cdcdf777450c5b5301e439061d29694c>
+
+`answers_5.txt` is the first list; `valid_5.txt` is both lists together. Both are sorted alphabetically and otherwise unchanged.
+
+Things to know about these lists:
+
+- **Nothing has been added or removed.** The decision was to use the official lists as they are rather than a cleaned-up copy, and a unit test fails if they are edited.
+- **Plurals:** no answer is a plural made by adding "s" or "es"; those words (`cakes`, `boxes`) are accepted as guesses only. Seven irregular plurals are answers, as they were in the original game: `geese`, `teeth`, `women`, `fungi`, `cacti`, `radii` and `algae`. Read strictly, that is the one place the game departs from rule 4 above ("Answers are never plural").
+- They are the lists as the original game shipped them. The New York Times, which now owns Wordle, has since removed some words (for example `slave`, `lynch` and `wench`) and no longer picks answers from a fixed list. Those words are still answers here.
+- Wordle and its word lists belong to The New York Times. They are used here for a coursework assessment; check the position before using them in anything public or commercial.
+- There is no official list for 6, 7 or 8 letters, which is why those lengths are built differently.
+
+**6 to 8 letters: built from open sources**
 
 - Valid guesses come from the [ENABLE word list](https://github.com/dolph/dictionary) (public domain).
 - Answers are the words that also appear in a [list of the 10,000 most common English words](https://github.com/first20hours/google-10000-english), which is derived from the Google Web Trillion Word Corpus and permitted for educational use. Plurals and proper nouns are filtered out, so answers are familiar words and never plural.
 
-**Rebuilding the word lists (optional)**
+**Rebuilding the 6 to 8 letter lists (optional)**
 
-Run these commands from the repository root. They need Python 3.9 or later and an internet connection.
+Run these commands from the repository root. They need Python 3.9 or later and an internet connection. The script writes the 6, 7 and 8-letter files only; it does not touch the 5-letter ones.
 
 1. Download the two source lists into `backend/scripts/sources/` (this folder is not committed):
 
@@ -246,7 +272,7 @@ curl -sSL -o backend/scripts/sources/enable_dictionary_words.txt https://raw.git
 curl -sSL -o backend/scripts/sources/common_words.txt https://raw.githubusercontent.com/first20hours/google-10000-english/master/google-10000-english-usa-no-swears.txt
 ```
 
-2. Build the eight files:
+2. Build the six files:
 
 ```bash
 python3 backend/scripts/build_word_lists.py \
@@ -259,17 +285,23 @@ python3 backend/scripts/build_word_lists.py \
 
 The script prints the number of valid words and answers for each length. The last two arguments are macOS system files used to keep names and places out of the answers. They are optional: without them the script still runs and applies only its built-in exclusion list.
 
-3. Reload the words into the database, which is only seeded when the `words` table is empty:
+**Reloading the words into the database**
+
+The words are only loaded when the `words` table is empty. After changing any of the files, empty the table and restart the backend:
 
 ```bash
 docker compose exec db psql -U wordle -d wordle -c "TRUNCATE words;"
 docker compose restart backend
 ```
 
-**Known limits**
+This does not affect existing users or games.
+
+**Known limits (6 to 8 letters)**
 
 - Plural detection is a spelling heuristic: a word ending in "s" is excluded from the answers when undoing a common plural ending gives another dictionary word. It errs towards excluding too much (for example, `news` is dropped).
 - Verb forms such as `showed` are allowed as answers.
+- The dictionary dates from around 2000, so newer words such as `online` and `podcast` are not accepted as guesses.
+- The common-words list was built from web pages, so some answers are web jargon (`warranty`, `shipping`).
 
 ## Testing
 
@@ -286,13 +318,13 @@ Run these from the repository root.
 
 | Command | What it runs | Tests | Takes about |
 |---|---|---|---|
-| `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 244 | 2 s |
+| `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 261 | 2 s |
 | `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 252 | 4 s |
 | `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres. | 175 | 9 s |
 | `make test-security` | Security tests: sign-in and CSRF on every route, who may open the WebSocket, log-in and sign-up limits, hashed secrets, game access, the hidden answer, hostile input. | 221 | 19 s |
 | `make test-concurrency` | Race tests: joins, guesses and sign-ups sent at the same instant. | 8 | 5 s |
 | `make test-e2e` | End-to-end tests: headless Chromium driving the real frontend and backend through seven user journeys. | 7 | 20 s |
-| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 907 | 60 s |
+| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 924 | 60 s |
 
 The first run of a layer is slower, because Docker builds its image.
 
