@@ -1,10 +1,12 @@
 # Test commands. Each layer has its own target; `make test` runs them all.
-# Everything runs in Docker (see docker-compose.test.yml), so only Docker is required.
+# The backend layers run in Docker (see docker-compose.test.yml); the frontend component
+# tests run with npm, like the rest of the frontend.
 #
 # Extra pytest options go in ARGS, for example:
 #   make test-api ARGS="-k pagination"        only tests whose name contains "pagination"
 #   make test-api ARGS="--random-order"       shuffle the order
 #   make test-unit ARGS="-x -vv"              stop at the first failure, verbose
+#   make test-frontend ARGS="Keyboard"        only test files whose name contains "Keyboard"
 
 COMPOSE_TEST = docker compose -f docker-compose.test.yml
 ARGS ?=
@@ -18,14 +20,20 @@ define run_layer
 	exit $$status
 endef
 
-.PHONY: test test-unit test-api test-security test-concurrency
+.PHONY: test test-unit test-frontend test-api test-security test-concurrency
 
 # Run every layer, fastest first, stopping at the first layer that fails.
-test: test-unit test-api test-security test-concurrency
+test: test-unit test-frontend test-api test-security test-concurrency
 
 # Layer 1: backend unit tests (no database, no network).
 test-unit:
 	$(call run_layer,unit,pytest tests/unit)
+
+# Frontend component tests (React components, hooks and the API client; no backend, no browser).
+# Installs the frontend's packages first if they are not there yet.
+test-frontend:
+	@test -x frontend/node_modules/.bin/vitest || (cd frontend && npm install --no-audit --no-fund)
+	@cd frontend && npm test -- $(ARGS)
 
 # Layer 2: backend API tests (FastAPI + a throwaway Postgres).
 test-api:
