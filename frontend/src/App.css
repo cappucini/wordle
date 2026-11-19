@@ -803,6 +803,12 @@ h3 {
     gap: var(--space-xl);
     padding-top: var(--space-xl);
   }
+
+  /* in one column the form comes first: someone coming back should not have to scroll
+     past the explanation to sign in */
+  .welcome .auth-form {
+    order: -1;
+  }
 }
 
 /* Older phones (iOS 15 and earlier) do not know the container unit (cqi) that sizes the

@@ -5,16 +5,31 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 //   open or close:  the button in the bar, or the ? key
 //   close:          Escape, or a click anywhere outside the panel
 //
-// The panel does not take over the page. The board stays visible behind it and focus stays
-// where it was, so closing it puts the player straight back in the game.
+// The panel does not take over the page. The board stays visible behind it, and closing it
+// puts the player straight back in the game.
 export function useRulesPanel() {
   const [isOpen, setIsOpen] = useState(false)
   // the button and the panel, so a click on either is not taken for a click "outside"
   const buttonRef = useRef(null)
   const panelRef = useRef(null)
 
-  const toggle = useCallback(() => setIsOpen((open) => !open), [])
-  const close = useCallback(() => setIsOpen(false), [])
+  // Closing also takes focus off the button. A player who opened the rules by pressing Enter
+  // on it would otherwise still be on it, and their next Enter would open the rules again
+  // instead of sending their guess.
+  const close = useCallback(() => {
+    setIsOpen(false)
+    if (document.activeElement === buttonRef.current) {
+      buttonRef.current.blur()
+    }
+  }, [])
+
+  const toggle = useCallback(() => {
+    if (isOpen) {
+      close()
+    } else {
+      setIsOpen(true)
+    }
+  }, [isOpen, close])
 
   // The ? key works whether the panel is open or closed.
   useEffect(() => {

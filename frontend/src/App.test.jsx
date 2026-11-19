@@ -467,6 +467,21 @@ describe('App: the "How to play" panel', () => {
     expect(typedLetters()).toBe('cra')
   })
 
+  it('gives Enter back to the board after being opened and closed from the keyboard', async () => {
+    // a player who never touches the mouse: Tab to the button, Enter to open, Escape to close.
+    // Focus must not stay on the button, or the next Enter opens the rules instead of guessing.
+    await renderPlaying()
+    rulesButton().focus()
+    await userEvent.keyboard('{Enter}')
+    expect(rulesPanel()).not.toBeNull()
+
+    await userEvent.keyboard('{Escape}')
+    await userEvent.keyboard('crane{Enter}')
+
+    expect(rulesPanel()).toBeNull()
+    expect(api.submitGuess).toHaveBeenCalledExactlyOnceWith('game-1', 'crane')
+  })
+
   it('is available before any game is started', async () => {
     await renderSignedIn()
 

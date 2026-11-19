@@ -38,7 +38,8 @@ function App() {
       <ErrorBoundary>
         {isCheckingSignIn && <p className="message">Loading...</p>}
 
-        {/* signed out: how the game works on the left, the sign-in form on the right */}
+        {/* signed out: how the game works on the left, the sign-in form on the right
+            (on a narrow screen the form is drawn first, see .welcome in App.css) */}
         {!isCheckingSignIn && user === null && (
           <div className="welcome">
             <HowToPlay />

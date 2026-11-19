@@ -191,3 +191,26 @@ def test_a_long_name_does_not_run_into_the_title_on_a_phone(new_visitor, size):
     title, name = visitor.game.title_box(), visitor.game.signed_in_name_box()
     assert name.left >= title.right, f"the name overlaps the title: name {name}, title {title}"
     assert visitor.game.sideways_overflow() == 0
+
+
+@pytest.mark.parametrize("size", [PHONE, SMALL_PHONE])
+def test_the_sign_in_form_is_on_screen_without_scrolling_on_a_phone(visitor, size):
+    resize(visitor, size)
+
+    visitor.open()
+    visitor.auth.wait_until_shown()
+
+    button, height = visitor.auth.submit_button_box(), visitor.auth.window_height()
+    assert button.bottom <= height, f"the Sign in button is below the fold: {button}, window {height} tall"
+    # the explanation is still there, under the form
+    assert visitor.auth.explanation_box().top >= visitor.auth.form_box().bottom
+
+
+def test_the_explanation_sits_beside_the_sign_in_form_on_a_desktop(visitor):
+    resize(visitor, DESKTOP)
+
+    visitor.open()
+    visitor.auth.wait_until_shown()
+
+    explanation, form = visitor.auth.explanation_box(), visitor.auth.form_box()
+    assert explanation.right <= form.left, f"explanation {explanation}, form {form}"
