@@ -113,6 +113,29 @@ API documentation is automatically available at `http://localhost:8000/docs`.
 - `backend/main.py` - Add your API endpoints here
 - `backend/requirements.txt` - Add any additional Python dependencies
 
+### Live updates in shared games
+
+When several players share a game, each player's page shows the others' guesses as they
+happen. While a game in progress is on screen, the page keeps a WebSocket open to the backend:
+
+```
+ws://localhost:8000/api/v1/games/{game_id}/ws
+```
+
+- When a guess is saved or a new player joins, the backend sends every page watching that
+  game one small message, `{"type": "game_updated"}`. The page then fetches the game through
+  the normal `GET /api/v1/games/{game_id}` route. No game data, and so no answer, ever
+  travels over the WebSocket.
+- Only a signed-in player of the game may connect, and only from the frontend's own address
+  (the addresses in `CORS_ORIGINS`). A refused connection is closed with code `4401` (not
+  signed in), `4403` (not a player) or `4404` (no such game).
+- If the connection drops, the page reconnects after 1 second, then 2, 4, 8 and at most
+  every 10 seconds, and checks for anything it missed as soon as it is back.
+- The list of connected pages is kept in the backend's memory, which is right for the single
+  backend process this project runs. Running several backend processes would need a shared
+  channel (for example Postgres `LISTEN`/`NOTIFY`) so a guess handled by one reaches pages
+  connected to another.
+
 ### Development Workflow
 
 1. Start the backend with `docker compose up --build`
@@ -189,13 +212,13 @@ Run these from the repository root.
 
 | Command | What it runs | Tests | Takes about |
 |---|---|---|---|
-| `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors. No database, no network. | 208 | 2 s |
-| `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 177 | 3 s |
-| `make test-api` | Backend API tests: real HTTP requests through FastAPI into a throwaway Postgres. | 136 | 8 s |
-| `make test-security` | Security tests: sign-in and CSRF on every route, hashed secrets, game access, the hidden answer, hostile input. | 172 | 8 s |
+| `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 215 | 2 s |
+| `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 193 | 3 s |
+| `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres. | 151 | 9 s |
+| `make test-security` | Security tests: sign-in and CSRF on every route, who may open the WebSocket, hashed secrets, game access, the hidden answer, hostile input. | 192 | 10 s |
 | `make test-concurrency` | Race tests: joins, guesses and sign-ups sent at the same instant. | 8 | 5 s |
-| `make test-e2e` | End-to-end tests: headless Chromium driving the real frontend and backend through seven user journeys. | 7 | 25 s |
-| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 708 | 50 s |
+| `make test-e2e` | End-to-end tests: headless Chromium driving the real frontend and backend through seven user journeys. | 7 | 20 s |
+| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 766 | 50 s |
 
 The first run of a layer is slower, because Docker builds its image.
 
@@ -286,5 +309,5 @@ the `devDependencies` of `frontend/package.json`. None are installed in the prod
 | A pure function or a rule | A unit test in `backend/tests/unit/` |
 | A route, a query or an error code | An API test in `backend/tests/api/` |
 | A component or the game hook | A `*.test.jsx` beside it |
-| A new route | Nothing for sign-in and CSRF: `test_route_protection.py` reads the route list and covers it. If the route is meant to be public, add it to `PUBLIC_ROUTES` there. |
+| A new HTTP route | Nothing for sign-in and CSRF: `test_route_protection.py` reads the route list and covers it. If the route is meant to be public, add it to `PUBLIC_ROUTES` there. |
 | A whole new thing a user can do | One end-to-end journey in `e2e/test_journeys.py`, using the page objects |
