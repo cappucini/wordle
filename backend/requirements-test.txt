@@ -4,3 +4,5 @@ pytest>=8.0
 httpx2
 # adds the --random-order flag, to check that no test depends on another having run first
 pytest-random-order>=1.1
+# stops a test that waits forever (for a WebSocket message that never comes) instead of hanging the run
+pytest-timeout>=2.3
