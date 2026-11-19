@@ -242,7 +242,22 @@ h3 {
   transition: background-color var(--dur-short) var(--ease-out);
 }
 
-.length-option:hover:not(.selected) {
+.length-option:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* the stepper's number, between its minus and plus, set like the buttons beside it */
+.length-value {
+  min-width: var(--control);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--control);
+  text-align: center;
+}
+
+.length-option:hover:not(.selected):not(:disabled) {
   background: var(--color-paper-2);
 }
 

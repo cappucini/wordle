@@ -259,6 +259,82 @@ describe('NewGameControls', () => {
   })
 })
 
+describe('NewGameControls: when there are too many lengths for a row of buttons', () => {
+  // twelve possible lengths, 4 to 15: more than the eight a row of buttons holds
+  const WIDE_CONFIG = { ...CONFIG, min_word_length: 4, max_word_length: 15 }
+
+  function renderStepper(props) {
+    const handlers = { onChangeLength: vi.fn(), onStart: vi.fn() }
+    render(<NewGameControls config={WIDE_CONFIG} wordLength={7} {...handlers} {...props} />)
+    return handlers
+  }
+
+  function picker() {
+    return within(screen.getByRole('group', { name: 'Word length' }))
+  }
+
+  it('still shows a row of buttons for exactly eight lengths', () => {
+    render(
+      <NewGameControls
+        config={{ ...CONFIG, min_word_length: 5, max_word_length: 12 }}
+        wordLength={5}
+        onChangeLength={() => {}}
+        onStart={() => {}}
+      />,
+    )
+
+    expect(picker().getAllByRole('button').map((button) => button.textContent)).toEqual([
+      '5', '6', '7', '8', '9', '10', '11', '12',
+    ])
+  })
+
+  it('switches to a stepper for nine or more: the chosen length between a minus and a plus', () => {
+    renderStepper()
+
+    expect(picker().getAllByRole('button')).toHaveLength(2)
+    expect(picker().getByRole('button', { name: 'Fewer letters' })).toBeInTheDocument()
+    expect(picker().getByRole('button', { name: 'More letters' })).toBeInTheDocument()
+    expect(picker().getByRole('status')).toHaveTextContent('7')
+  })
+
+  it('goes up one letter on plus and down one on minus', async () => {
+    const { onChangeLength } = renderStepper()
+
+    await userEvent.click(picker().getByRole('button', { name: 'More letters' }))
+    await userEvent.click(picker().getByRole('button', { name: 'Fewer letters' }))
+
+    expect(onChangeLength.mock.calls).toEqual([[8], [6]])
+  })
+
+  it('cannot go below the shortest length', async () => {
+    const { onChangeLength } = renderStepper({ wordLength: 4 })
+    const fewer = picker().getByRole('button', { name: 'Fewer letters' })
+
+    expect(fewer).toBeDisabled()
+    await userEvent.click(fewer)
+    expect(onChangeLength).not.toHaveBeenCalled()
+    expect(picker().getByRole('button', { name: 'More letters' })).toBeEnabled()
+  })
+
+  it('cannot go above the longest length', async () => {
+    const { onChangeLength } = renderStepper({ wordLength: 15 })
+    const more = picker().getByRole('button', { name: 'More letters' })
+
+    expect(more).toBeDisabled()
+    await userEvent.click(more)
+    expect(onChangeLength).not.toHaveBeenCalled()
+    expect(picker().getByRole('button', { name: 'Fewer letters' })).toBeEnabled()
+  })
+
+  it('says what the number counts, and still starts a game', async () => {
+    const { onStart } = renderStepper()
+
+    expect(picker().getByText('letters')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'New game' }))
+    expect(onStart).toHaveBeenCalledOnce()
+  })
+})
+
 describe('Players', () => {
   afterEach(() => {
     vi.useRealTimers()
