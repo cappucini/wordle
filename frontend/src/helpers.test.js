@@ -11,6 +11,7 @@ import {
 import { apiError } from './test/factories'
 
 describe('errorText', () => {
+  // it.each runs the same test once per row; %s in its name is replaced by the row's code
   it.each([
     ['GAME_NOT_FOUND', "That game doesn't exist. Start a new one?"],
     ['GAME_OVER', 'This game has already finished.'],

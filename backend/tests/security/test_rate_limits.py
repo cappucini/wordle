@@ -23,12 +23,17 @@ def clock(monkeypatch):
     from app.api.v1 import rate_limits
 
     class Clock:
+        """Holds how many seconds the test has moved time forward."""
         offset = 0.0
 
         def advance(self, seconds):
+            """Moves the limiters' time forward by this many seconds."""
             self.offset += seconds
 
     moved = Clock()
+    # Wrap each limiter's clock so it reads the real time plus the offset.
+    # `real=real` fixes each lambda to its own limiter's clock; without it they would
+    # all share the last one.
     for limiter in rate_limits.ALL_LIMITERS:
         real = limiter.clock
         monkeypatch.setattr(limiter, "clock", lambda real=real: real() + moved.offset)
@@ -44,10 +49,12 @@ def limits_by_address(monkeypatch):
 
 
 def log_in(client, username, password=PASSWORD):
+    """Tries to log in, with the right password unless given another. Returns the response."""
     return client.post(f"{API}/sessions", json={"username": username, "password": password})
 
 
 def fail_to_log_in(client, username, times):
+    """Sends this many wrong passwords, and checks each is answered with an ordinary 401."""
     for _ in range(times):
         response = log_in(client, username, "wrong password")
         assert response.status_code == 401, response.text
@@ -57,6 +64,7 @@ def fail_to_log_in(client, username, times):
 
 
 def test_ten_wrong_passwords_are_each_answered_normally(player, client):
+    # the assertions are inside fail_to_log_in: each of the ten must get a plain 401
     fail_to_log_in(client, player.username, 10)
 
 
@@ -146,12 +154,16 @@ def test_wrong_passwords_sent_at_the_same_instant_cannot_exceed_the_limit(player
 
     # 25 guesses released together against a limit of 10 (and under the address limit of 30)
     browsers = [new_client() for _ in range(25)]
+    # a Barrier holds each thread at wait() until all 25 are there, then lets them go together
     start = threading.Barrier(len(browsers))
 
     def guess(browser):
+        """Waits for the other threads, then sends one wrong password. Returns the status."""
         start.wait(timeout=10)
         return log_in(browser, player.username, "wrong password").status_code
 
+    # one thread per browser. pool.map runs guess for each and yields the status codes,
+    # and Counter adds up how many there were of each
     with ThreadPoolExecutor(len(browsers)) as pool:
         statuses = Counter(pool.map(guess, browsers))
 
@@ -188,6 +200,8 @@ def test_address_is_allowed_again_after_five_minutes(make_player, client, clock,
 
 
 def sign_up(client_factory, username):
+    """Signs up from a new client every time. Takes the `new_client` fixture itself,
+    not a client."""
     return client_factory().post(
         f"{API}/users", json={"username": username, "password": PASSWORD}
     )

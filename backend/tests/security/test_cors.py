@@ -15,6 +15,7 @@ FRONTEND_ORIGINS = [
     "http://127.0.0.1:5174",
 ]
 
+# Not the frontend, though several look like it. Each `id` says how that one differs.
 OTHER_ORIGINS = [
     pytest.param("https://evil.example", id="another site"),
     pytest.param("http://localhost:3000", id="another port on localhost"),
@@ -25,6 +26,8 @@ OTHER_ORIGINS = [
 
 
 def preflight(client, origin, method="POST"):
+    """Sends the OPTIONS request a browser sends first, to ask whether a page on
+    `origin` may make the real request."""
     return client.options(
         f"{API}/games",
         headers={

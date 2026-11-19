@@ -1,3 +1,6 @@
+# The backend's container image: Python, the packages in requirements.txt, and the app,
+# served by uvicorn on port 8000.
+
 FROM python:3.12-slim
 
 WORKDIR /app

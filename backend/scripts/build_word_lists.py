@@ -28,6 +28,7 @@ from pathlib import Path
 # 5-letter games use the original Wordle lists, which are not generated (see above)
 MIN_LENGTH = 6
 MAX_LENGTH = 8
+# ^ and $ are the start and end of the text, so the whole word must be a to z letters
 LETTERS_ONLY = re.compile(r"^[a-z]+$")
 
 # Dictionary words that are far better known as places, peoples, names or brands.
@@ -40,7 +41,10 @@ NOT_ANSWERS = {
 
 
 def read_words(path: Path) -> list[str]:
+    """Reads a file with one word per line. Returns the words, lowercased and in file
+    order, leaving out any line that is not made only of the letters a to z."""
     words = []
+    # errors="ignore" skips bytes that are not valid UTF-8 instead of stopping
     for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
         word = line.strip().lower()
         if LETTERS_ONLY.match(word):
@@ -69,6 +73,7 @@ def looks_plural(word: str, dictionary: set[str]) -> bool:
 
 def read_proper_nouns(names_path: Path, system_dictionary_path: Path) -> set[str]:
     """Names, plus words the system dictionary only lists with a capital letter."""
+    # the `if line.strip()` at the end of each of these leaves out blank lines
     proper = {line.strip().lower() for line in names_path.read_text().splitlines() if line.strip()}
     entries = [line.strip() for line in system_dictionary_path.read_text().splitlines() if line.strip()]
     lowercase_entries = {entry for entry in entries if entry.islower()}
@@ -79,10 +84,13 @@ def read_proper_nouns(names_path: Path, system_dictionary_path: Path) -> set[str
 
 
 def main() -> None:
+    """Reads the files named on the command line, and writes valid_N.txt and
+    answers_N.txt into the output folder for each word length."""
+    # the first three arguments, each made into a Path (sys.argv[0] is the script itself)
     dictionary_path, common_path, output_dir = (Path(arg) for arg in sys.argv[1:4])
     output_dir.mkdir(parents=True, exist_ok=True)
     proper_nouns = set()
-    if len(sys.argv) >= 6:
+    if len(sys.argv) >= 6:  # both optional files were given
         proper_nouns = read_proper_nouns(Path(sys.argv[4]), Path(sys.argv[5]))
 
     dictionary = set(read_words(dictionary_path))
@@ -102,10 +110,11 @@ def main() -> None:
             if word in proper_nouns or word in NOT_ANSWERS:   # drops jesse, paris, florence...
                 continue
             answers.append(word)
-        answers = sorted(set(answers))
+        answers = sorted(set(answers))  # set() drops repeats; then alphabetical order
 
         (output_dir / f"valid_{length}.txt").write_text("\n".join(valid) + "\n")
         (output_dir / f"answers_{length}.txt").write_text("\n".join(answers) + "\n")
+        # :>6 and :>5 right-align the numbers, so the printed lines form neat columns
         print(f"{length} letters: {len(valid):>6} valid, {len(answers):>5} answers")
 
 

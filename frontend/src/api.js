@@ -37,12 +37,12 @@ async function readJson(response) {
     // waits for body to be read and parsed
     return await response.json()
   } catch {
-    // handles any parsing filure
+    // handles any parsing failure
     return null
   }
 }
 
-// Sends one request to the backend. Every request here goes through the backend/
+// Sends one request to the backend. Every function below goes through this one.
 // Returns the response data, or throws an Error with a readable message.
 async function sendRequest(method, path, data) {
   const options = {
@@ -55,7 +55,7 @@ async function sendRequest(method, path, data) {
   if (method !== 'GET' && csrfToken !== null) {
     options.headers['X-CSRF-Token'] = csrfToken
   }
-  // If .data argument is not there, on't 
+  // only a request that sends data gets a body
   if (data !== undefined) {
     // convert to JSON, and say so; a request with no body has nothing to label
     options.headers['Content-Type'] = 'application/json'
@@ -94,8 +94,8 @@ async function sendRequest(method, path, data) {
   return body
 }
 
-// All 4 functions use the sendRequest() helper
-// export makes these functions available when we import within App.jsx
+// Every function below uses the sendRequest() helper.
+// export makes them available to the hooks that import them (useAuth.js and useGame.js).
 
 //getConfig retrieves game rules to enable a word-length drop-down that allows users to 
 // set the length of the words they want to guess
@@ -108,10 +108,13 @@ export function getGame(gameId) {
   return sendRequest('GET', '/games/' + gameId)
 }
 
+// Starts a new game with a secret word of the given length. Returns the game.
 export function createGame(wordLength) {
   return sendRequest('POST', '/games', { word_length: wordLength })
 }
 
+// Sends one guessed word for a game. The backend checks and saves it; the caller then
+// fetches the game again to see the result.
 export function submitGuess(gameId, word) {
   return sendRequest('POST', '/games/' + gameId + '/guesses', { word_guessed: word })
 }
@@ -122,9 +125,12 @@ export function submitGuess(gameId, word) {
 export const GAMES_PAGE_SIZE = 10
 export const MAX_GAMES_PAGE_SIZE = 100
 
+// Fetches one page of games. Leave `cursor` out (or pass null) for the first page.
+// `limit = GAMES_PAGE_SIZE` is a default: it applies when the caller passes no limit.
 export function listGames(cursor, limit = GAMES_PAGE_SIZE) {
   let path = '/games?limit=' + limit
   if (cursor) {
+    // a cursor can contain characters such as + and / that mean something else in a URL
     path += '&cursor=' + encodeURIComponent(cursor)
   }
   return sendRequest('GET', path)
@@ -148,6 +154,8 @@ export const SOCKET_CLOSED_GAME_NOT_FOUND = 4404
 // this player already has as many of these connections open as one player may (about ten tabs)
 export const SOCKET_CLOSED_TOO_MANY_CONNECTIONS = 4429
 
+// Opens the live-update connection for one game. The caller attaches onopen, onmessage
+// and onclose to the WebSocket this returns.
 export function openGameSocket(gameId) {
   return new WebSocket(SOCKET_URL + '/games/' + gameId + '/ws')
 }
@@ -157,6 +165,7 @@ export function openGameSocket(gameId) {
 // Creates an account and signs in. Returns the user: { id, username }
 export async function register(username, password) {
   const result = await sendRequest('POST', '/users', { username: username, password: password })
+  // keep the CSRF token for the requests that follow (see the top of this file)
   csrfToken = result.csrf_token
   return result.user
 }

@@ -36,6 +36,10 @@ class Player:
     """
 
     def __init__(self, client: TestClient, username: str, password: str, auth_body: dict):
+        """Keeps what sign-up returned: the user's id and the CSRF token.
+
+        `auth_body` is the JSON body of the sign-up (or log-in) response.
+        """
         self.client = client
         self.username = username
         self.password = password
@@ -44,6 +48,7 @@ class Player:
 
     @property
     def session_token(self) -> str:
+        """The value of the session cookie this player's client holds."""
         return self.client.cookies.get(SESSION_COOKIE)
 
     def in_another_browser(self, client: TestClient) -> "Player":
@@ -54,28 +59,35 @@ class Player:
 
     @property
     def csrf(self) -> dict:
+        """The header that carries the CSRF token, ready to pass as `headers=`."""
         return {CSRF_HEADER: self.csrf_token}
 
     def get(self, path: str, **kwargs):
+        """GET a path under /api/v1. Reading needs no CSRF header."""
         return self.client.get(API + path, **kwargs)
 
     def post(self, path: str, json=None):
+        """POST to a path under /api/v1, with the CSRF header."""
         return self.client.post(API + path, json=json, headers=self.csrf)
 
     def delete(self, path: str):
+        """DELETE a path under /api/v1, with the CSRF header."""
         return self.client.delete(API + path, headers=self.csrf)
 
     # ---- shortcuts for arranging a test; they fail loudly if the setup step itself breaks ----
 
     def create_game(self, word_length: int = 5) -> dict:
+        """Starts a game and returns its JSON."""
         response = self.post("/games", json={"word_length": word_length})
         assert response.status_code == 201, response.text
         return response.json()
 
     def join(self, game_id: str):
+        """Asks to join a game. Returns the response, so a test can check a refusal."""
         return self.post(f"/games/{game_id}/players")
 
     def guess(self, game_id: str, word: str):
+        """Submits a guess. Returns the response, so a test can check a refusal."""
         return self.post(f"/games/{game_id}/guesses", json={"word_guessed": word})
 
     def watch(self, game_id: str, **kwargs):
@@ -86,6 +98,7 @@ class Player:
         return self.client.websocket_connect(f"{API}/games/{game_id}/ws", **kwargs)
 
     def game(self, game_id: str) -> dict:
+        """Fetches a game this player is in and returns its JSON."""
         response = self.get(f"/games/{game_id}")
         assert response.status_code == 200, response.text
         return response.json()

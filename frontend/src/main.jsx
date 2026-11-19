@@ -1,3 +1,4 @@
+// The frontend's starting point: draws the App component into the page.
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'

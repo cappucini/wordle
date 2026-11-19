@@ -51,6 +51,7 @@ CLOSE_TOO_MANY_CONNECTIONS = 4429
 CLOSE_POLICY_VIOLATION = 1008
 
 
+# @dataclass writes __init__ from the fields listed in the class
 @dataclass
 class _Access:
     """The answer to "may this request watch this game?"."""
@@ -62,6 +63,11 @@ class _Access:
 
 
 def _check_access(token: str | None, game_id: UUID) -> _Access:
+    """Looks up the sign-in and the game, and says whether this request may watch.
+
+    An ordinary (not async) function because it uses the database; watch_game runs it
+    on a worker thread.
+    """
     if token is None:
         return _Access(close_code=CLOSE_NOT_AUTHENTICATED)
     # A database session just for this check. It is closed again before the connection
@@ -69,6 +75,7 @@ def _check_access(token: str | None, game_id: UUID) -> _Access:
     with SessionLocal() as session:
         try:
             auth_session = user_service.get_auth_session(session, token)
+            # called for its checks only: it raises if the game is missing or not theirs
             game_service.get_game(session, auth_session.user, game_id)
         except NotAuthenticated:
             return _Access(close_code=CLOSE_NOT_AUTHENTICATED)
@@ -85,6 +92,10 @@ def _check_access(token: str | None, game_id: UUID) -> _Access:
 
 @router.websocket("/api/v1/games/{game_id}/ws")
 async def watch_game(websocket: WebSocket, game_id: UUID):
+    """Opens the live connection for one game, after checking who is asking.
+
+    Then waits until the page goes away, and stops sending it notices.
+    """
     # A request from another website is turned away before the connection is even opened.
     origin = websocket.headers.get("origin")
     if origin is not None and origin not in ALLOWED_ORIGINS:
@@ -116,4 +127,5 @@ async def watch_game(websocket: WebSocket, game_id: UUID):
     except WebSocketDisconnect:
         pass
     finally:
+        # runs however the wait above ends, so a gone connection is never left listed
         watchers.remove(game_id, websocket)

@@ -46,6 +46,10 @@ from app.domain.rules import (
 from app.rate_limit import AttemptLimiter
 
 def setting_is_on(name: str, environ=os.environ) -> bool:
+    """True if the environment variable is set to "true", in any letter case. Unset is off.
+
+    `environ` is a parameter so a test can pass its own dictionary.
+    """
     return environ.get(name, "false").strip().lower() == "true"
 
 
@@ -65,11 +69,13 @@ def limit_from_environment(name: str, default: int, environ=os.environ) -> int:
     if raw is None:
         return default
     if not raw.isdecimal() or int(raw) < 1:
+        # !r prints the value in quotes, so a stray space or an empty value is visible
         raise ValueError(f"{name} must be a positive whole number, not {raw!r}")
     return int(raw)
 
 
 def _limiter(name: str, default: int) -> AttemptLimiter:
+    """Builds a limiter with this limit (or its environment override) and the shared window."""
     return AttemptLimiter(limit_from_environment(name, default), RATE_LIMIT_WINDOW_SECONDS)
 
 
@@ -93,6 +99,7 @@ ALL_LIMITERS = [
 
 
 def client_address(request: Request) -> str:
+    """The network address the request came from, or "unknown" if the server cannot tell."""
     return request.client.host if request.client is not None else "unknown"
 
 
@@ -129,6 +136,7 @@ def begin_login(username: str, address: str) -> None:
 
 
 def login_succeeded(username: str, address: str) -> None:
+    """Call after a correct password. Takes back what begin_login counted."""
     # The right password proves this is the account's owner, so their earlier typos stop
     # counting too. For the address only this one attempt is taken back: one good log-in
     # must not excuse guesses made at other accounts from the same machine.
@@ -153,10 +161,12 @@ def begin_signup(address: str) -> None:
 
 
 def signup_succeeded(address: str) -> None:
+    """Call after an account was created. Takes back the refused sign-up begin_signup counted."""
     if LIMIT_BY_ADDRESS:
         refused_signups_by_address.forgive(address)
 
 
 def signup_refused(address: str) -> None:
+    """Call when the username was taken. Takes back the created account begin_signup counted."""
     if LIMIT_BY_ADDRESS:
         signups_by_address.forgive(address)

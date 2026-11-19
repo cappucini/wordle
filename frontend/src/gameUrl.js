@@ -7,6 +7,7 @@ const GAME_PARAM = 'game'
 // Returns the game ID in the address bar, or null if there isn't one.
 // An address ending in "?game=" names no game, so it counts as not having one.
 export function getGameIdFromUrl() {
+  // URLSearchParams reads the part of the address after "?"; get() gives null if "game" is absent
   const gameId = new URLSearchParams(window.location.search).get(GAME_PARAM)
   return gameId === null || gameId === '' ? null : gameId
 }
@@ -26,6 +27,8 @@ export function getUserWhoOpenedGameInUrl() {
 
 // Records the current address as opened by this player, without adding a history entry.
 export function markGameInUrlAsOpenedBy(userId) {
+  // { [OPENED_BY]: userId } uses the constant's value as the key: { wordleOpenedBy: userId }.
+  // The arguments are (state to keep with the entry, an unused title, the address).
   window.history.replaceState({ [OPENED_BY]: userId }, '', window.location.href)
 }
 

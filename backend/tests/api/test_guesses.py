@@ -81,6 +81,7 @@ def test_guesses_list_matches_the_game(player):
 @pytest.mark.parametrize(
     "word",
     [
+        # each pytest.param is one run of the test; `id` is its name in the test report
         pytest.param("cran", id="shorter than any game allows"),
         pytest.param("absolutes", id="longer than any game allows"),
         pytest.param("cran3", id="digit"),
@@ -197,6 +198,7 @@ def test_every_word_length_can_be_won(player, word_length):
 
 def test_guessing_the_answer_on_the_last_turn_is_a_win(player):
     game = player.create_game()
+    # five wrong guesses leave exactly one turn
     for word in WRONG_5[:5]:
         assert player.guess(game["id"], word).json()["game_status"] == "in_progress"
 
@@ -238,11 +240,13 @@ def test_running_out_of_guesses_loses_and_reveals_the_answer(player):
 def test_longer_games_are_lost_after_one_more_guess_than_letters(player, word_length):
     game = player.create_game(word_length)
 
+    # the same wrong word again and again, until the turns run out
     statuses = [
         player.guess(game["id"], WRONG[word_length]).json()["game_status"]
         for _ in range(word_length + 1)
     ]
 
+    # every guess but the last leaves the game going
     assert statuses == ["in_progress"] * word_length + ["lost"]
 
 

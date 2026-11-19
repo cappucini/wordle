@@ -24,17 +24,21 @@ class FakeSocket:
     """Stands in for a WebSocket: remembers what it was sent."""
 
     def __init__(self, broken: bool = False):
+        """`broken=True` makes every send fail, like a connection that has gone away."""
         self.broken = broken
         self.sent = []
         self.closed_with = None
+        # sending and closing happen later, on the event loop; a test waits on these to know when
         self.was_sent_something = asyncio.Event()
         self.was_closed = asyncio.Event()
 
     async def close(self, code=1000):
+        """Records the code the socket was closed with."""
         self.closed_with = code
         self.was_closed.set()
 
     async def send_json(self, message):
+        """Records the message, or raises if this socket is broken."""
         if self.broken:
             raise RuntimeError("this connection has gone away")
         self.sent.append(message)
@@ -42,16 +46,19 @@ class FakeSocket:
 
 
 async def notify_from_another_thread(watchers: GameWatchers, game_id) -> None:
+    """Calls notify() from a worker thread, and waits for the call to return."""
     # routes run on worker threads, so this is how notify() is called in the real app
     await asyncio.to_thread(watchers.notify, game_id)
 
 
 async def received(socket: FakeSocket) -> None:
+    """Waits until the socket has been sent something. Gives up after five seconds."""
     await asyncio.wait_for(socket.was_sent_something.wait(), timeout=5)
 
 
 def test_notify_reaches_every_connection_watching_the_game():
     async def scenario():
+        """Two sockets watch one game; both should be sent the notice."""
         watchers = GameWatchers()
         first, second = FakeSocket(), FakeSocket()
         watch(watchers, GAME, first)
@@ -64,11 +71,14 @@ def test_notify_reaches_every_connection_watching_the_game():
         assert first.sent == [GAME_UPDATED]
         assert second.sent == [GAME_UPDATED]
 
+    # The code under test is async, but pytest calls plain functions. So each test
+    # writes its steps as a coroutine, and asyncio.run() runs it on a new event loop.
     asyncio.run(scenario())
 
 
 def test_notify_does_not_reach_connections_watching_another_game():
     async def scenario():
+        """One socket watches this game, one another game; only the first should hear."""
         watchers = GameWatchers()
         watching, elsewhere = FakeSocket(), FakeSocket()
         watch(watchers, GAME, watching)
@@ -84,6 +94,7 @@ def test_notify_does_not_reach_connections_watching_another_game():
 
 def test_removed_connection_is_no_longer_notified():
     async def scenario():
+        """Two sockets watch; one is removed before the notice goes out."""
         watchers = GameWatchers()
         stays, leaves = FakeSocket(), FakeSocket()
         watch(watchers, GAME, stays)
@@ -101,6 +112,7 @@ def test_removed_connection_is_no_longer_notified():
 
 def test_one_broken_connection_does_not_stop_the_others_being_notified():
     async def scenario():
+        """A socket that cannot be sent to sits beside one that works."""
         watchers = GameWatchers()
         broken, working = FakeSocket(broken=True), FakeSocket()
         watch(watchers, GAME, broken)
@@ -120,6 +132,7 @@ def test_notify_with_nobody_watching_does_nothing():
 
 def test_removing_the_last_connection_forgets_the_game():
     async def scenario():
+        """Adds one socket, then removes it twice."""
         watchers = GameWatchers()
         socket = FakeSocket()
         watch(watchers, GAME, socket)
@@ -139,11 +152,13 @@ def test_the_notice_carries_no_game_data():
 
 
 async def closed(socket: FakeSocket) -> None:
+    """Waits until the socket has been closed. Gives up after five seconds."""
     await asyncio.wait_for(socket.was_closed.wait(), timeout=5)
 
 
 def test_a_connection_whose_session_has_expired_is_closed_instead_of_notified():
     async def scenario():
+        """One connection's sign-in ended last week; the other's is still good."""
         watchers = GameWatchers()
         expired, current = FakeSocket(), FakeSocket()
         watch(watchers, GAME, expired, session="old", expires_at=LAST_WEEK)
@@ -154,6 +169,7 @@ def test_a_connection_whose_session_has_expired_is_closed_instead_of_notified():
         await closed(expired)
 
         assert expired.sent == []
+        # 4401 is the close code for "not signed in"
         assert expired.closed_with == 4401
         assert watchers.count(GAME) == 1
 
@@ -162,6 +178,7 @@ def test_a_connection_whose_session_has_expired_is_closed_instead_of_notified():
 
 def test_closing_a_session_closes_its_connections_on_every_game():
     async def scenario():
+        """One sign-in has a connection on each of two games; another user watches as well."""
         watchers = GameWatchers()
         first, second, someone_else = FakeSocket(), FakeSocket(), FakeSocket()
         watch(watchers, GAME, first, session="logged-out")
@@ -182,6 +199,7 @@ def test_closing_a_session_closes_its_connections_on_every_game():
 
 def test_one_user_can_only_hold_so_many_connections():
     async def scenario():
+        """With a limit of three, one user fills their allowance and then asks for a fourth."""
         watchers = GameWatchers(max_per_user=3)
         sockets = [FakeSocket() for _ in range(3)]
         for socket in sockets:
@@ -198,6 +216,7 @@ def test_one_user_can_only_hold_so_many_connections():
 
 def test_a_connection_lasts_as_long_as_its_session_when_the_session_is_extended():
     async def scenario():
+        """A connection registered as expired has its sign-in extended before the notice."""
         watchers = GameWatchers()
         socket = FakeSocket()
         watch(watchers, GAME, socket, session="extended", expires_at=LAST_WEEK)

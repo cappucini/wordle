@@ -17,8 +17,10 @@ const FRIENDLY_MESSAGES = {
   TOO_MANY_ATTEMPTS: 'Too many attempts. Wait a few minutes and try again.',
 }
 
+// shown for any code that is not in the table above
 const FALLBACK_MESSAGE = 'Something went wrong. Please try again.'
 
+// Returns the sentence to show the player for an error thrown by api.js.
 export function errorText(error) {
   // Word errors keep the backend's wording, because it names the word and the reason,
   // for example: 'zzzzz' is not in the word list

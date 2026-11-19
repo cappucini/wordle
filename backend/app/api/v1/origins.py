@@ -15,6 +15,8 @@ DEFAULT_CORS_ORIGINS = (
     "http://localhost:5173,http://127.0.0.1:5173,"
     "http://localhost:5174,http://127.0.0.1:5174"
 )
+# split the setting at the commas, trim the spaces around each address, and skip
+# empty pieces (a trailing comma would leave one)
 ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",")

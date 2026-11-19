@@ -1,5 +1,38 @@
 # Wordle Full Stack Assessment
 
+## Running the app
+
+**You need:** [Docker](https://www.docker.com/products/docker-desktop/) (running) and [Node.js](https://nodejs.org/) with npm.
+
+1. Start the backend and its database. From the repository root:
+
+   ```bash
+   docker compose up --build
+   ```
+
+   Leave this running. The first start takes a minute or two while it builds and loads the word lists.
+
+2. In a second terminal, start the frontend:
+
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+3. Open <http://localhost:5173>, create an account and start a game.
+
+To play a shared game, copy the game's link from the Players panel and open it in another browser (or a private window) signed in as a different player.
+
+| Address | What is there |
+|---|---|
+| <http://localhost:5173> | The game |
+| <http://localhost:8000/docs> | The API documentation |
+
+To stop, press Ctrl+C in both terminals, then run `docker compose down`.
+
+To run the tests, use `make test` from the repository root. See [Testing](#testing) for the separate layers.
+
 ## Background
 
 Wordle is a simple game in which you have to guess a five-letter word. You get six guesses, learning a little more information with each guess, and eventually narrow your guesses down to find the answer.

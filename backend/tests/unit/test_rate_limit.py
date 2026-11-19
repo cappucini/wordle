@@ -4,22 +4,31 @@ from app.rate_limit import AttemptLimiter
 
 
 class FakeClock:
+    """A clock that moves only when a test tells it to, so no test waits for real time.
+
+    The limiter calls its clock like a function; `__call__` lets this object be used that way.
+    """
     def __init__(self):
+        """Starts at an arbitrary time."""
         self.now = 1000.0
 
     def __call__(self) -> float:
+        """The current fake time, in seconds."""
         return self.now
 
     def advance(self, seconds: float) -> None:
+        """Moves the time forward by this many seconds."""
         self.now += seconds
 
 
 def make_limiter(max_attempts=3, window_seconds=60):
+    """A limiter on a fake clock. Returns both, so a test can move the time."""
     clock = FakeClock()
     return AttemptLimiter(max_attempts, window_seconds, clock=clock), clock
 
 
 def test_nothing_is_blocked_to_begin_with():
+    # `_` takes the clock, which this test does not need
     limiter, _ = make_limiter()
 
     assert limiter.seconds_until_allowed("erica") == 0
@@ -144,12 +153,16 @@ def test_attempts_made_at_the_same_instant_cannot_exceed_the_limit():
     from concurrent.futures import ThreadPoolExecutor
 
     limiter, _ = make_limiter(max_attempts=10)
+    # a Barrier holds each thread at wait() until all 40 are there, then lets them go together
     start = threading.Barrier(40)
 
     def attempt(_):
+        """Waits for the other threads, then makes one attempt.
+        pool.map passes a number in; it is not used."""
         start.wait(timeout=10)
         return limiter.attempt("erica")
 
+    # pool.map calls attempt 40 times, each on its own thread; a result of 0 means "allowed"
     with ThreadPoolExecutor(40) as pool:
         results = list(pool.map(attempt, range(40)))
 
@@ -198,6 +211,7 @@ def test_a_setting_that_is_not_a_positive_whole_number_stops_the_server_starting
     from app.api.v1.rate_limits import limit_from_environment
 
     for bad in ["", "ten", "0", "-5", "2.5"]:
+        # match= also checks that the error message names the setting
         with pytest.raises(ValueError, match="MAX_SIGNUPS_PER_ADDRESS"):
             limit_from_environment("MAX_SIGNUPS_PER_ADDRESS", 20, environ={"MAX_SIGNUPS_PER_ADDRESS": bad})
 

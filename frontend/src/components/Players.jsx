@@ -1,3 +1,4 @@
+// The "Players" panel: who is in the game, and a button that copies its invite link.
 import { useState } from 'react'
 
 // Who is in the game, and a button to copy its link for inviting others.
@@ -6,9 +7,11 @@ function Players({ game, currentUser }) {
   // '' before any click, then 'copied' or 'failed' for a couple of seconds
   const [copyState, setCopyState] = useState('')
 
+  // the invite link is offered only while the game is going and has a free place
   const isFull = game.players.length >= game.max_players
   const canInvite = game.status === 'in_progress' && !isFull
 
+  // Copies the page address to the clipboard, and shows for a few seconds whether it worked.
   async function copyLink(event) {
     // always give up focus, so the Enter that submits the next guess doesn't copy the link again
     event.currentTarget.blur()
@@ -20,6 +23,7 @@ function Players({ game, currentUser }) {
       // some browsers block clipboard access; say so, and point to the address bar instead
       setCopyState('failed')
     }
+    // back to the normal label after three seconds
     setTimeout(() => setCopyState(''), 3000)
   }
 
@@ -40,6 +44,7 @@ function Players({ game, currentUser }) {
 
       {canInvite && (
         <button className="link-button" onClick={copyLink}>
+          {/* copyState has one value at a time, so exactly one of these three labels is drawn */}
           {copyState === 'copied' && 'Link copied!'}
           {copyState === 'failed' && "Couldn't copy. Share the address in your browser's address bar."}
           {copyState === '' && 'Copy invite link'}

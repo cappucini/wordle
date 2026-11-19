@@ -1,10 +1,13 @@
 // Builds the objects the backend sends, so each test only spells out what it cares about.
 
+// the one-letter codes makeGuess accepts, and the result each stands for
 const RESULTS = { C: 'correct', P: 'present', A: 'absent' }
 
+// two players for tests to sign in as
 export const ERICA = { id: 'user-erica', username: 'erica' }
 export const SAM = { id: 'user-sam', username: 'sam' }
 
+// the rules, as the backend's /config sends them
 export const CONFIG = {
   min_word_length: 5,
   max_word_length: 8,
@@ -24,8 +27,12 @@ export function makeGuess(word, pattern, guessedBy = ERICA.username, number = 1)
   }
 }
 
+// A game as the backend sends it. With no arguments: five letters, in progress, erica
+// playing alone, no guesses. Pass `overrides` to change any of its fields.
 export function makeGame(overrides = {}) {
+  // ?? means "use the right-hand side when the left is null or undefined"
   const wordLength = overrides.word_length ?? 5
+  // copy each guess and number it by its position, whatever number it came with
   const guesses = (overrides.guesses ?? []).map((guess, index) => ({ ...guess, number: index + 1 }))
   const maxGuesses = wordLength + 1
   return {
@@ -39,7 +46,9 @@ export function makeGame(overrides = {}) {
     owner_id: ERICA.id,
     players: [ERICA],
     max_players: 3,
+    // spread last, so anything the test passed replaces the defaults above...
     ...overrides,
+    // ...except the guesses, which are always the renumbered list
     guesses: guesses,
   }
 }

@@ -2,8 +2,10 @@
 // so these tests check exactly what would be sent and how each kind of answer is handled.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// where requests should go: the test page is on localhost, and api.js uses the page's host
 const API = 'http://localhost:8000/api/v1'
 
+// both are made afresh before each test (see beforeEach)
 let api
 let fetchMock
 
@@ -23,6 +25,7 @@ function reply(status, body) {
 
 // The details of one request the page made: lastRequest() is the most recent.
 function request(index) {
+  // each recorded call is [url, options]; at(-1) counts back from the end
   const [url, options] = fetchMock.mock.calls.at(index)
   return {
     url: url,
@@ -33,10 +36,12 @@ function request(index) {
   }
 }
 
+// The most recent request the page made.
 function lastRequest() {
   return request(-1)
 }
 
+// Signs in against the fake backend, so that later requests have this CSRF token to send.
 async function signIn(csrfToken = 'csrf-123') {
   fetchMock.mockResolvedValueOnce(reply(201, { user: { id: 'u1', username: 'erica' }, csrf_token: csrfToken }))
   return api.login('erica', 'correct horse')
@@ -47,10 +52,12 @@ beforeEach(async () => {
   vi.resetModules()
   fetchMock = vi.fn().mockResolvedValue(reply(200, {}))
   vi.stubGlobal('fetch', fetchMock)
+  // imported here, not at the top of the file, so each test gets the fresh copy
   api = await import('./api')
 })
 
 afterEach(() => {
+  // put the real fetch back (and anything else a test replaced with stubGlobal)
   vi.unstubAllGlobals()
 })
 
@@ -160,6 +167,7 @@ describe('api: the live-update connection', () => {
     const opened = []
     vi.stubGlobal(
       'WebSocket',
+      // a stand-in WebSocket that only records the address it was asked to open
       class {
         constructor(url) {
           opened.push(url)
@@ -264,6 +272,7 @@ describe('api: when something goes wrong', () => {
   it('copes with an error that is not JSON, such as a crash page', async () => {
     fetchMock.mockResolvedValueOnce(reply(500))
 
+    // catch the rejection and keep the error itself, to check several things about it
     const error = await api.getGame('game-1').catch((caught) => caught)
 
     expect(error.message).toBe('Request failed (500)')
@@ -291,6 +300,8 @@ describe('api: when something goes wrong', () => {
 describe('api: when the backend ends the session', () => {
   const NOT_AUTHENTICATED = { code: 'NOT_AUTHENTICATED', detail: 'Your sign-in has expired. Sign in again' }
 
+  // Starts listening for the signed-out announcement. Returns the fake listener, so a test
+  // can check whether it was called (and remove it afterwards).
   function listenForSignedOut() {
     const listener = vi.fn()
     window.addEventListener(api.SIGNED_OUT_EVENT, listener)

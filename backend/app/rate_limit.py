@@ -16,12 +16,18 @@ from collections.abc import Callable
 
 
 class AttemptLimiter:
+    """Allows each key at most max_attempts attempts within any window_seconds.
+
+    Safe to call from several threads at once.
+    """
+
     def __init__(
         self,
         max_attempts: int,
         window_seconds: float,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        """Sets the limit and the window. `clock` is a function returning the time in seconds."""
         self.max_attempts = max_attempts
         self.window_seconds = window_seconds
         # a clock that only moves forward; replaceable so tests need not wait
@@ -34,12 +40,15 @@ class AttemptLimiter:
 
     def seconds_until_allowed(self, key: str) -> int:
         """0 if this key may try now; otherwise how long until it may."""
+        # `with self._lock`: only one thread at a time runs the block below; the lock
+        # is released when the block ends, including on a return or an error
         with self._lock:
             now = self.clock()
             attempts = self._still_counting(key, now)
             if len(attempts) < self.max_attempts:
                 return 0
             # allowed again when the oldest attempt leaves the window
+            # rounded up to whole seconds, and never 0, which would read as "allowed"
             return max(1, math.ceil(attempts[0] + self.window_seconds - now))
 
     def attempt(self, key: str) -> int:
@@ -65,7 +74,7 @@ class AttemptLimiter:
         """Takes back the most recent attempt, for one that turned out not to count."""
         with self._lock:
             attempts = self._attempts.get(key)
-            if attempts:
+            if attempts:  # false for both "no such key" and "nothing counted"
                 attempts.pop()
 
     def record(self, key: str) -> None:
@@ -76,14 +85,18 @@ class AttemptLimiter:
             self._sweep_if_due(now)
 
     def clear(self, key: str) -> None:
+        """Forgets every attempt counted for this key."""
         with self._lock:
+            # the None default means no error for a key that was never counted
             self._attempts.pop(key, None)
 
     def reset(self) -> None:
+        """Forgets every attempt for every key."""
         with self._lock:
             self._attempts.clear()
 
     def tracked_keys(self) -> int:
+        """How many keys are being remembered at the moment."""
         with self._lock:
             return len(self._attempts)
 
@@ -91,6 +104,7 @@ class AttemptLimiter:
 
     def _still_counting(self, key: str, now: float) -> deque[float]:
         """This key's attempts, with those older than the window dropped."""
+        # setdefault returns the key's deque, first storing an empty one if it had none
         attempts = self._attempts.setdefault(key, deque())
         while attempts and attempts[0] <= now - self.window_seconds:
             attempts.popleft()
@@ -105,6 +119,7 @@ class AttemptLimiter:
         if now - self._last_sweep < self.window_seconds:
             return
         self._last_sweep = now
+        # list(...) copies the keys first: a dict cannot be changed while it is looped over
         for key in list(self._attempts):
             if not self._still_counting(key, now):
                 del self._attempts[key]

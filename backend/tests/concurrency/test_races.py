@@ -24,22 +24,32 @@ def at_the_same_time(actions):
     Returns their results in the order given. An error inside any action (including a
     crash in the server, which the test client re-raises) fails the test.
     """
+    # a Barrier holds every thread that calls wait() until all of them have arrived,
+    # then lets them go together
     start = threading.Barrier(len(actions))
 
     def run(action):
+        """Waits at the barrier with the other threads, then does the action."""
         start.wait(timeout=10)
         return action()
 
+    # one thread per action, so none waits in a queue. result() waits for a thread
+    # to finish, and re-raises any error that happened inside it
     with ThreadPoolExecutor(max_workers=len(actions)) as pool:
         futures = [pool.submit(run, action) for action in actions]
         return [future.result(timeout=30) for future in futures]
 
 
 def statuses(responses) -> Counter:
+    """How many responses came back with each status code.
+
+    A Counter compares equal to a plain dict, so tests write `== {200: 2, 409: 6}`.
+    """
     return Counter(response.status_code for response in responses)
 
 
 def codes(responses, status: int) -> set:
+    """The error codes of the responses that have this status."""
     return {response.json()["code"] for response in responses if response.status_code == status}
 
 
@@ -54,6 +64,8 @@ def test_many_players_joining_at_once_never_exceed_the_player_limit(make_player)
         game = owner.create_game()
 
         responses = at_the_same_time(
+            # `joiner=joiner` fixes each lambda to its own joiner. Without it every lambda would
+            # look up `joiner` only when called, and all would find the last one.
             [lambda joiner=joiner: joiner.join(game["id"]) for joiner in joiners]
         )
 
@@ -62,6 +74,7 @@ def test_many_players_joining_at_once_never_exceed_the_player_limit(make_player)
         assert codes(responses, 409) == {"GAME_FULL"}
         players = owner.game(game["id"])["players"]
         assert len(players) == 3
+        # and they are three different people
         assert len({player["id"] for player in players}) == 3
 
 
@@ -99,6 +112,7 @@ def test_guesses_at_once_never_exceed_the_guess_limit(make_player, new_client):
 
         responses = at_the_same_time(
             [
+                # index % 6 takes the twelve tabs round the six wrong words twice
                 lambda tab=tab, word=WRONG_5[index % 6]: tab.guess(game["id"], word)
                 for index, tab in enumerate(tabs)
             ]
@@ -113,6 +127,7 @@ def test_guesses_at_once_never_exceed_the_guess_limit(make_player, new_client):
             "in_progress": 5,
             "lost": 1,
         }
+        # next() takes the first match from the generator: the guess numbered 6
         assert next(g for g in accepted if g["number"] == 6)["game_status"] == "lost"
 
         final = owner.game(game["id"])

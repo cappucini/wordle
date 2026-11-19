@@ -12,12 +12,15 @@ SEVEN_DAYS_IN_SECONDS = 7 * 24 * 60 * 60
 
 def cookie_attributes(response) -> dict:
     """The session cookie's Set-Cookie header as {attribute: value}, attributes lowercased."""
+    # next() takes the first Set-Cookie header that is about the session cookie
     header = next(
         value
         for value in response.headers.get_list("set-cookie")
         if value.startswith(SESSION_COOKIE + "=")
     )
     attributes = {}
+    # the header reads "name=value; Path=/; HttpOnly; ...". Skip the first part, then
+    # split each attribute at its "=" (one with no "=", like HttpOnly, gets the value "")
     for part in header.split(";")[1:]:
         name, _, value = part.strip().partition("=")
         attributes[name.lower()] = value
@@ -25,10 +28,12 @@ def cookie_attributes(response) -> dict:
 
 
 def sign_up(client, username="erica"):
+    """Creates an account with the usual password. Returns the response."""
     return client.post(f"{API}/users", json={"username": username, "password": PASSWORD})
 
 
 def log_in(client, username="erica"):
+    """Logs in with the usual password. Returns the response."""
     return client.post(f"{API}/sessions", json={"username": username, "password": PASSWORD})
 
 
@@ -40,6 +45,7 @@ def test_password_is_stored_as_a_salted_hash_never_as_typed(player, db):
 
     stored = db.query(UserRow).one().password_hash
 
+    # the word "scrypt", then a 16-byte salt and a 32-byte hash in hex, with "$" between
     assert re.fullmatch(r"scrypt\$[0-9a-f]{32}\$[0-9a-f]{64}", stored)
     assert player.password not in stored
 
@@ -50,6 +56,7 @@ def test_two_users_with_the_same_password_have_different_hashes(make_player, db)
     make_player(password=PASSWORD)
     make_player(password=PASSWORD)
 
+    # unpacking into two names also fails unless there are exactly two users
     first, second = (user.password_hash for user in db.query(UserRow).all())
     assert first != second
 
@@ -117,6 +124,7 @@ def test_csrf_token_is_not_the_session_token(player):
 # ---------- the session cookie ----------
 
 
+# the two helper functions are the parameters; `ids` names them in the test report
 @pytest.mark.parametrize("action", [sign_up, log_in], ids=["sign up", "log in"])
 def test_session_cookie_is_set_with_safe_attributes(client, new_client, action):
     if action is log_in:
@@ -157,6 +165,7 @@ def test_log_out_tells_the_browser_to_delete_the_cookie(player):
 
 def test_every_sign_in_gets_a_new_token(client, new_client):
     sign_up(client)
+    # sets keep one of each value, so a repeated token would make the counts below too small
     tokens = {client.cookies.get(SESSION_COOKIE)}
     csrf_tokens = set()
 

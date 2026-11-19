@@ -35,6 +35,7 @@ def test_word_length_within_limits_is_accepted(word_length):
 
 @pytest.mark.parametrize("word_length", [-1, 0, 4, 9, 100])
 def test_word_length_outside_limits_is_rejected(word_length):
+    # passes only if the code inside the `with` block raises this error
     with pytest.raises(ValidationError):
         CreateGameRequest(word_length=word_length)
 
@@ -81,6 +82,7 @@ def test_username_outside_limits_is_rejected(username):
 
 
 @pytest.mark.parametrize(
+    # each pair is unpacked into the two arguments: what is typed, and what should be kept
     "typed, stored",
     [("Erica", "erica"), ("ERICA", "erica"), ("  erica  ", "erica"), (" Erica_2 ", "erica_2")],
 )
@@ -182,15 +184,18 @@ def test_guess_rejects_unknown_fields():
 
 # ---------- responses: what a game reveals ----------
 
+# SimpleNamespace makes a plain object with the attributes given: enough to pass for a row
 ERICA = SimpleNamespace(id=uuid4(), username="erica")
 SAM = SimpleNamespace(id=uuid4(), username="sam")
 
 
 def fake_guess(number, word, user=ERICA):
+    """Stands in for a guess row: only the attributes the response classes read."""
     return SimpleNamespace(number=number, word=word, user=user)
 
 
 def fake_game(status="in_progress", guesses=(), players=(ERICA,), answer="crane"):
+    """Stands in for a game row. The word length and guess limit follow from the answer."""
     return SimpleNamespace(
         id=uuid4(),
         owner_id=ERICA.id,

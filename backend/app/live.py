@@ -38,6 +38,8 @@ CLOSE_NOT_AUTHENTICATED = 4401
 
 @dataclass(eq=False)  # compared by identity: each open connection is its own entry
 class _Watcher:
+    """One open WebSocket, with what is needed to send to it and to know when to close it."""
+
     websocket: WebSocket
     # the event loop the connection belongs to; notices are handed to it from other threads
     loop: asyncio.AbstractEventLoop
@@ -48,7 +50,13 @@ class _Watcher:
 
 
 class GameWatchers:
+    """Remembers which open connections are watching which game, and sends them notices.
+
+    Safe to call from several threads at once.
+    """
+
     def __init__(self, max_per_user: int = MAX_LIVE_CONNECTIONS_PER_USER) -> None:
+        """Starts with nobody watching. max_per_user is how many connections one user may hold."""
         self.max_per_user = max_per_user
         # game id -> the open connections watching it
         self._watchers: dict[UUID, list[_Watcher]] = {}
@@ -76,6 +84,7 @@ class GameWatchers:
             websocket, asyncio.get_running_loop(), user_id, session_hash, expires_at
         )
         with self._lock:
+            # how many connections this user already has, counted across every game
             held = sum(
                 1
                 for watching in self._watchers.values()
@@ -84,15 +93,21 @@ class GameWatchers:
             )
             if held >= self.max_per_user:
                 return False
+            # setdefault returns the game's list, first storing an empty one if it had none
             self._watchers.setdefault(game_id, []).append(watcher)
             return True
 
     def remove(self, game_id: UUID, websocket: WebSocket) -> None:
+        """Stop sending this connection the game's notices. Called when its page has gone."""
         with self._lock:
+            # the lambda is the test _drop applies to each watcher; `is` matches this
+            # exact connection object, not one that merely looks equal
             self._drop(game_id, lambda watcher: watcher.websocket is websocket)
 
     def count(self, game_id: UUID) -> int:
+        """How many connections are watching this game."""
         with self._lock:
+            # the () default stands in for "no watchers", so an unknown game counts as 0
             return len(self._watchers.get(game_id, ()))
 
     def notify(self, game_id: UUID) -> None:
@@ -104,6 +119,7 @@ class GameWatchers:
         """
         now = self.now()
         with self._lock:
+            # copy the list while holding the lock; the sending below happens outside it
             watching = list(self._watchers.get(game_id, ()))
             expired = [watcher for watcher in watching if watcher.expires_at <= now]
             self._drop(game_id, lambda watcher: watcher.expires_at <= now)
@@ -117,6 +133,7 @@ class GameWatchers:
         """Close every connection opened with this sign-in. Called when it is logged out."""
         closing = []
         with self._lock:
+            # list(...) copies the keys first, because _drop may delete a game from the dict
             for game_id in list(self._watchers):
                 closing += [
                     watcher
@@ -151,12 +168,17 @@ class GameWatchers:
 def _run(watcher: _Watcher, coroutine) -> None:
     """Hands a coroutine to the connection's own event loop, from whatever thread this is."""
     if watcher.loop.is_closed():
+        # the loop can no longer run anything; close() throws the coroutine away
+        # cleanly, without Python warning that it was never awaited
         coroutine.close()
         return
+    # Routes run on worker threads, where `await` is not available. This queues the
+    # coroutine on the loop's own thread and returns at once, without waiting for it.
     asyncio.run_coroutine_threadsafe(coroutine, watcher.loop)
 
 
 async def _send_update(websocket: WebSocket) -> None:
+    """Sends the "game updated" message. A connection that has gone is ignored."""
     try:
         await websocket.send_json(GAME_UPDATED)
     except Exception:
@@ -167,6 +189,7 @@ async def _send_update(websocket: WebSocket) -> None:
 
 
 async def _close(websocket: WebSocket, code: int) -> None:
+    """Closes a connection with the given code. One that is already closed is ignored."""
     try:
         await websocket.close(code=code)
     except Exception:

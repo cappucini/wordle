@@ -9,9 +9,12 @@ import { CONFIG, ERICA, apiError, makeGame, makeGuess } from './test/factories'
 
 // keep api.js's constants; replace every function that would call the backend
 vi.mock('./api', async (importOriginal) => {
+  // importOriginal loads the real api.js, so its constants can be copied from it
   const real = await importOriginal()
   return {
     // every constant api.js exports (event names, close codes, page sizes) keeps its real value
+    // (Object.entries lists [name, value] pairs, filter drops the functions, and
+    // Object.fromEntries turns what is left back into an object)
     ...Object.fromEntries(Object.entries(real).filter(([, value]) => typeof value !== 'function')),
     openGameSocket: vi.fn(),
     getConfig: vi.fn(),
@@ -27,8 +30,10 @@ vi.mock('./api', async (importOriginal) => {
   }
 })
 
+// the game the fake backend hands out, unless a test sets up another
 const NEW_GAME = makeGame({ id: 'game-1' })
 
+// The fake backend's usual answers: a visitor with no games, and every request succeeds.
 beforeEach(() => {
   api.getCurrentUser.mockRejectedValue(apiError('NOT_AUTHENTICATED')) // a visitor, unless a test says otherwise
   api.getConfig.mockResolvedValue(CONFIG)
@@ -43,6 +48,8 @@ beforeEach(() => {
   api.openGameSocket.mockImplementation(() => ({ close() {} })) // a connection that stays quiet
 })
 
+// Draws the page for a player whose saved sign-in is still good, and waits until the
+// game screen is ready to use.
 async function renderSignedIn() {
   api.getCurrentUser.mockResolvedValue(ERICA)
   render(<App />)
@@ -53,12 +60,14 @@ async function renderSignedIn() {
 describe('App: signing in and out', () => {
   it('says "Loading..." until it knows whether anyone is signed in', async () => {
     let answer
+    // a promise the test settles by hand, so the page can be looked at while it still waits
     api.getCurrentUser.mockReturnValue(new Promise((resolve) => (answer = resolve)))
 
     render(<App />)
 
     expect(screen.getByText('Loading...')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Sign in to play' })).toBeNull()
+    // let the answer arrive inside act(), so React finishes redrawing before the test ends
     await act(async () => answer(ERICA))
   })
 
@@ -159,6 +168,7 @@ describe('App: signing in and out', () => {
     await renderSignedIn()
     api.createGame.mockResolvedValue(makeGame({ id: 'ericas-first' }))
     await userEvent.click(screen.getByRole('button', { name: 'New game' }))
+    // waitFor retries the check until it passes: the address changes once the game is created
     await waitFor(() => expect(window.location.search).toBe('?game=ericas-first'))
     api.createGame.mockResolvedValue(makeGame({ id: 'ericas-second' }))
     await userEvent.click(screen.getByRole('button', { name: 'New game' }))
@@ -173,6 +183,7 @@ describe('App: signing in and out', () => {
     await userEvent.type(screen.getByLabelText('Password'), 'correct horse')
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     await screen.findByRole('button', { name: 'New game' })
+    // act() makes React finish its updates from the Back press before the checks below
     act(() => window.history.back())
 
     expect(await screen.findByText("You're not a player in that game.")).toBeInTheDocument()
@@ -254,6 +265,7 @@ describe('App: the game screen', () => {
     await renderSignedIn()
     await userEvent.click(screen.getByRole('button', { name: 'New game' }))
     await screen.findAllByRole('img')
+    // within() limits the searches below to the on-screen keyboard
     const keyboard = within(screen.getByLabelText('Keyboard'))
 
     await userEvent.click(keyboard.getByRole('button', { name: 'c' }))
@@ -338,20 +350,24 @@ describe('App: when something unexpected breaks while drawing the page', () => {
 })
 
 describe('App: the "How to play" panel', () => {
+  // The "How to play" button in the bar.
   function rulesButton() {
     return screen.getByRole('button', { name: 'How to play' })
   }
 
+  // The open rules panel, or null when it is closed (queryBy gives null instead of failing).
   function rulesPanel() {
     return screen.queryByRole('region', { name: 'How to play' })
   }
 
+  // Signs in, starts a game and waits for the board to be drawn.
   async function renderPlaying() {
     await renderSignedIn()
     await userEvent.click(screen.getByRole('button', { name: 'New game' }))
     await screen.findAllByRole('img')
   }
 
+  // The letters in the board's first row, joined into one string.
   function typedLetters() {
     return screen.getAllByRole('img').slice(0, 5).map((tile) => tile.textContent).join('')
   }

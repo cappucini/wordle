@@ -1,3 +1,5 @@
+// HowToPlay and Rules: the explanation of the game, shown beside the sign-in form and in
+// the panel a player can open while playing.
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import HowToPlay, { Rules } from './HowToPlay'
@@ -15,6 +17,7 @@ describe('HowToPlay', () => {
   it('explains the three colours, in the order green, yellow, grey', () => {
     render(<HowToPlay />)
 
+    // each <dd> has the role "definition"; within() searches only inside the section
     const meanings = within(screen.getByRole('region', { name: 'How to play' }))
       .getAllByRole('definition')
       .map((meaning) => meaning.textContent)
@@ -29,6 +32,7 @@ describe('HowToPlay', () => {
   it('colours each sample tile with the result it explains', () => {
     const { container } = render(<HowToPlay />)
 
+    // the spread turns the list the browser returns into a real array, which has map()
     const tiles = [...container.querySelectorAll('.legend .tile')]
 
     expect(tiles.map((tile) => tile.className)).toEqual(['tile correct', 'tile present', 'tile absent'])

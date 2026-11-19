@@ -1,18 +1,24 @@
+// AuthForm: the sign-in and create-account form. Its two handlers are fakes, so these tests
+// check what the form sends and what it says, without a backend.
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { apiError } from '../test/factories'
 import AuthForm from './AuthForm'
 
+// Draws the form with fake handlers that succeed and no notice. Pass props to replace any
+// of those. Returns the handlers, so a test can check how they were called.
 function renderForm(props) {
   const handlers = {
     onSignIn: vi.fn().mockResolvedValue(),
     onCreateAccount: vi.fn().mockResolvedValue(),
   }
+  // props is spread last, so whatever the test passed wins over the defaults
   render(<AuthForm notice="" {...handlers} {...props} />)
   return handlers
 }
 
+// Types into the two fields. An empty string leaves that field untouched.
 async function fillIn(username, password) {
   if (username !== '') {
     await userEvent.type(screen.getByLabelText('Username'), username)
@@ -22,10 +28,12 @@ async function fillIn(username, password) {
   }
 }
 
+// Clicks the link that turns the sign-in form into the create-account form.
 async function switchToCreate() {
   await userEvent.click(screen.getByRole('button', { name: 'New here? Create an account' }))
 }
 
+// The line where the form reports problems (it has role="alert").
 function message() {
   return screen.getByRole('alert')
 }
@@ -108,6 +116,7 @@ describe('AuthForm: signing in', () => {
 
   it('cannot be sent twice while the first attempt is in flight', async () => {
     let finish
+    // a sign-in that stays unanswered until the test calls finish()
     const onSignIn = vi.fn(() => new Promise((resolve) => (finish = resolve)))
     renderForm({ onSignIn: onSignIn })
     await fillIn('erica', 'correct horse')
@@ -207,6 +216,7 @@ describe('AuthForm: creating an account', () => {
     await switchToCreate()
     await userEvent.type(screen.getByLabelText('Username'), 'erica')
     await userEvent.click(screen.getByLabelText('Password'))
+    // pasted in one go rather than typed one key at a time
     await userEvent.paste('p'.repeat(129))
 
     await userEvent.click(screen.getByRole('button', { name: 'Create account' }))

@@ -1,3 +1,7 @@
+"""Sign-in checks shared by the routes: reading and setting the session cookie, finding the
+signed-in player for a request, and checking the CSRF token on requests that change data.
+"""
+
 import hmac
 import os
 
@@ -28,23 +32,27 @@ COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 
 
 def set_session_cookie(response: Response, token: str) -> None:
+    """Puts the session token in the browser's cookie, to be kept for SESSION_DAYS."""
     response.set_cookie(
         key=SESSION_COOKIE,
         value=token,
         httponly=True,  # not readable from JavaScript
         samesite="lax",  # not sent on requests that another site makes in the background
         secure=COOKIE_SECURE,
-        max_age=SESSION_DAYS * 24 * 60 * 60,
+        max_age=SESSION_DAYS * 24 * 60 * 60,  # in seconds
         path="/",
     )
 
 
 def clear_session_cookie(response: Response) -> None:
+    """Tells the browser to delete the session cookie. Used when signing out."""
     response.delete_cookie(key=SESSION_COOKIE, path="/")
 
 
 def get_token(wordle_session: str | None = Cookie(default=None)) -> str:
     """Reads the session token from the request's cookie."""
+    # Cookie(...) makes FastAPI fill this parameter from the cookie with the same name,
+    # so the parameter must be spelled like SESSION_COOKIE. No cookie gives None.
     if wordle_session is None:
         raise NotAuthenticated("Sign in to continue")
     return wordle_session
@@ -52,9 +60,14 @@ def get_token(wordle_session: str | None = Cookie(default=None)) -> str:
 
 def get_auth_session(
     request: Request,
+    # Depends(f) asks FastAPI to call f first and pass its result in as this parameter
     token: str = Depends(get_token),
     session: Session = Depends(get_session),
 ) -> AuthSessionRow:
+    """Finds the sign-in this request belongs to, and keeps it alive while it is in use.
+
+    Raises NotAuthenticated if the cookie is missing, unknown or expired.
+    """
     auth_session = user_service.get_auth_session(session, token)
     # A sign-in that is being used is kept alive: once a day its expiry is pushed back out
     # to the full length, and any open live connections are extended to match.
@@ -62,6 +75,7 @@ def get_auth_session(
         watchers.extend_session(auth_session.token_hash, auth_session.expires_at)
         # The browser's cookie must be renewed too. That is left to renew_session_cookie
         # below, which runs on the way out whatever the route answers.
+        # (request.state is a place to keep values for the length of one request)
         request.state.session_token_to_renew = token
     return auth_session
 
@@ -75,6 +89,7 @@ def renew_session_cookie(request: Request, response: Response) -> None:
     set earlier would be lost. The server would then have extended the sign-in while the
     browser's cookie kept its old end date.
     """
+    # getattr with a default: None when nothing was stored, instead of an error
     token = getattr(request.state, "session_token_to_renew", None)
     if token is None:
         return
@@ -97,12 +112,15 @@ def get_current_user(
 
 def require_csrf(
     auth_session: AuthSessionRow = Depends(get_auth_session),
+    # Header(...) fills this from the X-CSRF-Token header: FastAPI matches the parameter
+    # name to the header name, reading underscores as hyphens. No header gives None.
     x_csrf_token: str | None = Header(default=None),
 ) -> None:
     """Routes that change something add this, to refuse requests another site could forge."""
     expected = auth_session.csrf_token
     if expected is None or x_csrf_token is None:
         raise CsrfCheckFailed("This request is missing its CSRF token")
-    # compare_digest takes the same time whether or not the values match
+    # compare_digest takes the same time whether or not the values match, so the time
+    # a refusal takes does not hint at how much of a guessed token was right
     if not hmac.compare_digest(x_csrf_token, expected):
         raise CsrfCheckFailed("This request's CSRF token is not valid")

@@ -1,3 +1,4 @@
+// The "New game" panel: pick a word length, then start a game.
 import { blurAfterMouseClick } from '../focus'
 
 // A row of buttons shows every choice at once, which is best while there are few of them.
@@ -13,6 +14,7 @@ function NewGameControls({ config, wordLength, onChangeLength, onStart }) {
   for (let length = config.min_word_length; length <= config.max_word_length; length++) {
     lengthOptions.push(length)
   }
+  // true when there are too many lengths to show as a row of buttons
   const useStepper = lengthOptions.length > MOST_LENGTHS_AS_BUTTONS
 
   return (
@@ -24,6 +26,7 @@ function NewGameControls({ config, wordLength, onChangeLength, onStart }) {
             <button
               key={length}
               className={length === wordLength ? 'length-option selected' : 'length-option'}
+              // aria-pressed tells screen readers which length is the chosen one
               aria-pressed={length === wordLength}
               onClick={(event) => {
                 onChangeLength(length)
@@ -44,6 +47,7 @@ function NewGameControls({ config, wordLength, onChangeLength, onStart }) {
               className="length-option"
               aria-label="Fewer letters"
               disabled={wordLength <= config.min_word_length}
+              // the button is disabled at the shortest length, so this never goes below it
               onClick={(event) => {
                 onChangeLength(wordLength - 1)
                 blurAfterMouseClick(event)
@@ -56,6 +60,7 @@ function NewGameControls({ config, wordLength, onChangeLength, onStart }) {
               className="length-option"
               aria-label="More letters"
               disabled={wordLength >= config.max_word_length}
+              // the button is disabled at the longest length, so this never goes above it
               onClick={(event) => {
                 onChangeLength(wordLength + 1)
                 blurAfterMouseClick(event)

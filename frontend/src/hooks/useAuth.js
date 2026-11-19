@@ -1,3 +1,5 @@
+// Sign-in state for the page: who is signed in, and the functions to sign in, create an
+// account and sign out.
 import { useEffect, useState } from 'react'
 import { SIGNED_OUT_EVENT, getCurrentUser, login, logout, register } from '../api'
 import { errorText } from '../errorText'
@@ -26,11 +28,13 @@ export function useAuth() {
         }
       })
       .finally(() => setIsCheckingSignIn(false))
+  // the empty [] means: run this once, when the page first appears
   }, [])
 
   // api.js announces when the backend rejects the token mid-session (it expired, or the
   // account signed out elsewhere). Drop the user so the sign-in form comes back.
   useEffect(() => {
+    // Runs when api.js announces that the session has ended.
     function handleSignedOut() {
       // This only fires when the page was signed in and the backend then refused the session.
       // Say why the form is back, rather than dropping them on it without a word.
@@ -38,6 +42,7 @@ export function useAuth() {
       setNotice('Your sign-in has ended. Please sign in again.')
     }
     window.addEventListener(SIGNED_OUT_EVENT, handleSignedOut)
+    // the function returned here is the clean-up: React runs it when the page goes away
     return () => window.removeEventListener(SIGNED_OUT_EVENT, handleSignedOut)
   }, [])
 
@@ -47,11 +52,13 @@ export function useAuth() {
     setNotice('')
   }
 
+  // Creates an account. The backend signs the new player in at the same time.
   async function createAccount(username, password) {
     setUser(await register(username, password))
     setNotice('')
   }
 
+  // Signs out. The sign-in form comes back even if the request to the backend fails.
   async function signOut() {
     try {
       await logout()

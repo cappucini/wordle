@@ -35,6 +35,7 @@ def test_a_game_allows_one_more_guess_than_the_word_has_letters(word_length, exp
 
 
 @pytest.mark.parametrize(
+    # each pytest.param gives the four arguments in this order; `id` names the case
     "guesses_used, max_guesses, guessed_correctly, expected",
     [
         pytest.param(1, 6, True, GameStatus.won, id="correct on the first guess"),
@@ -54,6 +55,7 @@ def test_next_status(guesses_used, max_guesses, guessed_correctly, expected):
 
 def test_status_and_result_values_are_the_api_strings():
     # stored in the database and sent to the frontend; renaming one breaks both
+    # looping over an Enum class gives its members in the order they are defined
     assert [status.value for status in GameStatus] == ["in_progress", "won", "lost"]
     assert [result.value for result in LetterResult] == ["correct", "present", "absent"]
 

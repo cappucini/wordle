@@ -9,6 +9,7 @@ from sqlalchemy import inspect
 
 from tests.support import API, PASSWORD
 
+# Tried in every place the API takes text. Each `id` says what kind of attack it stands for.
 HOSTILE_TEXT = [
     pytest.param("' OR '1'='1", id="SQL: always-true condition"),
     pytest.param("'; DROP TABLE users; --", id="SQL: drop table"),
@@ -25,16 +26,20 @@ HOSTILE_TEXT = [
 
 
 def cursor_of(raw: str) -> str:
+    """Wraps text the way the API wraps a cursor: in URL-safe base64."""
     return base64.urlsafe_b64encode(raw.encode()).decode()
 
 
 def assert_refused_cleanly(response, allowed=(401, 404, 422)):
+    """Checks for one of the allowed 4xx statuses and the usual {code, detail} error body."""
     assert response.status_code in allowed, response.text
     assert set(response.json()) == {"code", "detail"}
 
 
 def assert_tables_are_intact(db):
+    """Checks that every table still exists, so no hostile text managed to drop one."""
     tables = set(inspect(db.get_bind()).get_table_names())
+    # <= between sets means "is a subset of": every expected table is among those found
     assert {"users", "auth_sessions", "words", "games", "guesses", "game_players"} <= tables
 
 
@@ -82,6 +87,7 @@ def test_hostile_guess_is_refused_and_not_recorded(player, db, text):
 def test_hostile_cursor_is_refused(player, db, text):
     player.create_game()
 
+    # three ways in: the bare text, the text as a cursor, and the text as both halves of one
     for cursor in (text, cursor_of(text), cursor_of(f"{text}|{text}")):
         response = player.get("/games", params={"cursor": cursor})
         assert_refused_cleanly(response)
@@ -115,6 +121,7 @@ def test_well_formed_cursor_with_an_extreme_date_does_not_crash(player, created_
 @pytest.mark.parametrize("text", HOSTILE_TEXT)
 def test_hostile_game_id_is_refused(player, db, text):
     # percent-encoded, as a browser would send it, so the text arrives as one path segment
+    # safe='' makes quote() encode "/" as well
     response = player.client.get(f"{API}/games/{quote(text[:200], safe='')}")
 
     assert response.status_code in (404, 422), response.text

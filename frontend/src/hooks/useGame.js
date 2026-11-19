@@ -1,3 +1,5 @@
+// Everything the game screen does: loading and starting games, typing and submitting
+// guesses, the games list, and live updates from other players over a WebSocket.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   GAMES_PAGE_SIZE,
@@ -41,6 +43,8 @@ const REFUSED = [SOCKET_CLOSED_NOT_A_PLAYER, SOCKET_CLOSED_GAME_NOT_FOUND]
 // `user` is the signed-in player ({ id, username }).
 // `isTypingPaused` is true while something is open over the game (the "How to play" panel),
 // so key presses meant for it are not typed onto the board.
+// `{ isTypingPaused = false } = {}` makes the second argument optional: leaving it out,
+// or leaving that one option out, both mean "not paused".
 export function useGame(user, { isTypingPaused = false } = {}) {
   const userId = user.id
   // Every call useState() dedicates a piece of state with a given starting value.
@@ -64,11 +68,13 @@ export function useGame(user, { isTypingPaused = false } = {}) {
   const changeTypedWord = useCallback((nextWord) => {
     typedWordRef.current = nextWord
     setTypedWord(nextWord)
+  // [] means this function is made once and never replaced
   }, [])
   // true when the message is about the word being typed, so only then does the row shake
   const [rowHasProblem, setRowHasProblem] = useState(false)
   // true while a game named in the address bar is being fetched, so the page can wait
   // instead of briefly showing the "start a game" hint
+  // (passing a function makes React work the starting value out once, not on every redraw)
   const [isLoadingGame, setIsLoadingGame] = useState(() => getGameIdFromUrl() !== null)
   // a ref, not state: it must change immediately so a double-click can't start two games
   const isStartingGame = useRef(false)
@@ -79,7 +85,7 @@ export function useGame(user, { isTypingPaused = false } = {}) {
   // can finish after a newer one; its answer is ignored so the wrong game never shows.
   const latestLoad = useRef(0)
 
-  // This is called each time useGame() hook runs, registering load data functions.
+  // Runs once, when the game screen first appears: loads the game settings from the backend.
   useEffect(() => {
     // sends request and returns a promise
     getConfig()
@@ -91,6 +97,7 @@ export function useGame(user, { isTypingPaused = false } = {}) {
         setWordLength(rules.default_word_length)
       })
       .catch((error) => setMessage(errorText(error)))
+  // [] means: run this once, after the page is first drawn
   }, [])
 
   // How many games "Your games" is showing, and whether a "Show more" request is under way.
@@ -103,6 +110,8 @@ export function useGame(user, { isTypingPaused = false } = {}) {
   // It asks for as many games as are already showing, in whole pages, so a player who has
   // clicked "Show more" keeps those extra games instead of dropping back to the first page.
   const refreshGames = useCallback(() => {
+    // for example: 14 games showing is 2 pages, so ask for 20, but never more than the
+    // backend allows in one request
     const pagesShown = Math.max(1, Math.ceil(shownGamesCount.current / GAMES_PAGE_SIZE))
     const limit = Math.min(pagesShown * GAMES_PAGE_SIZE, MAX_GAMES_PAGE_SIZE)
     listGames(null, limit)
@@ -124,6 +133,7 @@ export function useGame(user, { isTypingPaused = false } = {}) {
     isLoadingMoreGames.current = true
     listGames(nextGamesCursor)
       .then((page) => {
+        // the function form is given the list as it is now, not as it was when the request began
         setGames((current) => {
           // The list may have been refreshed while this page was on its way, and then some
           // of these games are in it already. Only add the ones that aren't.
@@ -152,6 +162,7 @@ export function useGame(user, { isTypingPaused = false } = {}) {
   // and otherwise they are told they are not a player. Nobody is joined by pressing Back.
   const showGameFromUrl = useCallback(() => {
     const gameId = getGameIdFromUrl()
+    // number this load: its answer only counts if no later load has started by then
     latestLoad.current += 1
     const thisLoad = latestLoad.current
     changeTypedWord('')
@@ -195,7 +206,9 @@ export function useGame(user, { isTypingPaused = false } = {}) {
   useEffect(() => {
     showGameFromUrl()
     refreshGames()
+    // the browser fires "popstate" when Back or Forward changes the address without a reload
     window.addEventListener('popstate', showGameFromUrl)
+    // clean-up: stop listening when this screen goes away, or before the effect runs again
     return () => window.removeEventListener('popstate', showGameFromUrl)
   }, [showGameFromUrl, refreshGames])
 
@@ -214,6 +227,7 @@ export function useGame(user, { isTypingPaused = false } = {}) {
   const gameId = game !== null ? game.id : null
   const isInProgress = game !== null && game.status === 'in_progress'
   useEffect(() => {
+    // no game, or a finished one: nothing more can change, so no connection is needed
     if (gameId === null || !isInProgress) {
       return
     }
@@ -230,6 +244,8 @@ export function useGame(user, { isTypingPaused = false } = {}) {
           if (isFinished) {
             return
           }
+          // the function form compares against the game on screen now, not the one from when
+          // the request was sent
           setGame((current) => {
             if (current === null || current.id !== latest.id) {
               return current // the player has moved to a different game meanwhile
@@ -261,11 +277,14 @@ export function useGame(user, { isTypingPaused = false } = {}) {
       }
     }
 
+    // Stops the fallback timer: there is a connection again, or this game is done with.
     function stopCheckingOnATimer() {
       clearInterval(checkTimer)
       checkTimer = null
     }
 
+    // Opens the WebSocket and says what to do when it opens, sends a notice, or closes.
+    // When the connection drops, this is called again after a delay.
     function connect() {
       try {
         socket = openGameSocket(gameId)
@@ -282,11 +301,13 @@ export function useGame(user, { isTypingPaused = false } = {}) {
         // anything that happened while there was no connection was not announced, so look now
         fetchLatest()
       }
+      // any message means "the game changed"; what it says is not needed
       socket.onmessage = () => fetchLatest()
       socket.onclose = (event) => {
         if (isFinished) {
           return // we closed it ourselves
         }
+        // refused on purpose (not a player, or no such game): no retry, and no timer either
         if (REFUSED.includes(event.code)) {
           return
         }
@@ -303,6 +324,7 @@ export function useGame(user, { isTypingPaused = false } = {}) {
           return // too many tabs open; asking for another connection would be refused again
         }
         // dropped (the server restarted, or the network blinked): try again, a little later each time
+        // 2 ** failedAttempts doubles the wait each time (1s, 2s, 4s, 8s); Math.min caps it at 10s
         const delay = Math.min(FIRST_RECONNECT_DELAY_MS * 2 ** failedAttempts, LONGEST_RECONNECT_DELAY_MS)
         failedAttempts += 1
         reconnectTimer = setTimeout(connect, delay)
@@ -319,8 +341,12 @@ export function useGame(user, { isTypingPaused = false } = {}) {
         socket.close()
       }
     }
+  // when the game on screen changes or ends, React runs the clean-up above and then the
+  // whole effect again for the new values
   }, [gameId, isInProgress, refreshGames])
 
+  // Creates a new game with the chosen word length and puts it on screen.
+  // Called when "New game" is clicked.
   async function startGame() {
     if (isStartingGame.current) {
       return // a new game is already being created; ignore the extra click
@@ -356,7 +382,7 @@ export function useGame(user, { isTypingPaused = false } = {}) {
     }
   }
 
-  // Registers a keyboard listener function
+  // Handles one key press.
   // Every key press ends up here, including on-screen keyboard and physical keyboard.
   const pressKey = useCallback(
     async (key) => {
@@ -433,25 +459,30 @@ export function useGame(user, { isTypingPaused = false } = {}) {
             setMessage(errorText(error))
           }
         } finally {
+          // unlock the keyboard, unless the lock now belongs to a guess for another game
           if (submittingForGame.current === game.id) {
             submittingForGame.current = null
           }
         }
       } else if (key === 'Backspace') {
+        // slice(0, -1) is the word without its last letter
         changeTypedWord(typedWord.slice(0, -1))
         setMessage('')
         setRowHasProblem(false)
+      // a single letter (not a key such as "Shift" or "Tab"), and the row still has room
       } else if (/^[a-zA-Z]$/.test(key) && typedWord.length < game.word_length) {
         changeTypedWord(typedWord + key.toLowerCase())
         setMessage('')
         setRowHasProblem(false)
       }
     },
+    // pressKey is rebuilt when any of these change, so it never works from an old game
     [game, isLoadingGame, refreshGames, changeTypedWord],
   )
 
   // Listen to the physical keyboard.
   useEffect(() => {
+    // Passes a physical key press on to pressKey, unless it is one to leave alone.
     function handleKeyDown(event) {
       if (isTypingPaused) {
         return // the board is not listening right now; what was typed so far is kept
@@ -490,6 +521,7 @@ export function useGame(user, { isTypingPaused = false } = {}) {
     startGame,
     pressKey,
     games,
+    // the backend sends a cursor only while another page exists
     hasMoreGames: nextGamesCursor !== null,
     loadMoreGames,
     openGame,

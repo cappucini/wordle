@@ -30,9 +30,12 @@ def long_username() -> str:
 
 
 def resize(visitor, size) -> None:
+    """Sets the visitor's browser window to a (width, height) size."""
+    # the * unpacks the pair into the two arguments set_window_size takes
     visitor.driver.set_window_size(*size)
 
 
+# parametrize runs the test once for each size in the list
 @pytest.mark.parametrize("size", [DESKTOP, SMALL_LAPTOP, PHONE, SMALL_PHONE])
 def test_nothing_sticks_out_sideways(visitor, size):
     resize(visitor, size)
@@ -62,6 +65,7 @@ def test_the_board_is_on_screen_for_a_player_with_many_games(visitor):
 
     _, window_height = game.window_size()
     board = game.board_box()
+    # a 5-letter board has six rows
     one_tile = board.height / 6
 
     assert board.top + one_tile <= window_height, (
@@ -117,7 +121,9 @@ def test_small_boards_are_drawn_in_squares_and_never_change_a_rows_height(visito
         resize(visitor, size)
         boards = game.small_boards()
 
+        # newest first: not started, won in one guess (1 x 5), lost (6 x 5), lost (9 x 8)
         assert [board["squares"] for board in boards] == [0, 5, 30, 72]
+        # a set drops repeats, so one value left means every row is the same height
         assert len({board["row_height"] for board in boards}) == 1, (
             f"at {size}, rows differ in height: {[board['row_height'] for board in boards]}"
         )
@@ -158,6 +164,7 @@ def test_keys_stay_usable_beside_the_widest_board(new_visitor, new_api_player, s
     resize(visitor, size)
     visitor.sign_up()
     game = visitor.game.start_new_game(word_length=8)
+    # the game's id is what follows "game=" in the address bar
     new_api_player().join(visitor.driver.current_url.split("game=")[1])
     game.guess(WRONG_8)
     game.wait_until_player_count_is(2)

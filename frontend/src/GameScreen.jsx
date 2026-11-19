@@ -1,3 +1,5 @@
+// The game screen a signed-in player sees: the top bar, the three panels (new game, players,
+// your games), the board and the keyboard. The game's logic lives in hooks/useGame.js.
 import Board from './components/Board'
 import GameList from './components/GameList'
 import GameResult from './components/GameResult'
@@ -16,6 +18,7 @@ import { useRulesPanel } from './hooks/useRulesPanel'
 function GameScreen({ user, onSignOut }) {
   // the "How to play" panel, opened from the bar or with the ? key
   const {
+    // `isOpen: isRulesOpen` takes the hook's `isOpen` and calls it isRulesOpen in this file
     isOpen: isRulesOpen,
     toggle: toggleRules,
     buttonRef: rulesButtonRef,
@@ -24,7 +27,7 @@ function GameScreen({ user, onSignOut }) {
   const {
     // game's rules from backend, used by NewGameControls to build length buttons
     config,
-    // length of word player picked, used by NewGameConrols to build length buttons
+    // length of word player picked, used by NewGameControls to build length buttons
     wordLength,
     // function that is called when length button is clicked
     setWordLength,
@@ -53,10 +56,12 @@ function GameScreen({ user, onSignOut }) {
     // while the rules are open, the keyboard belongs to the panel, not the board
   } = useGame(user, { isTypingPaused: isRulesOpen })
 
+  // The rules have not arrived yet. Show the error if loading them failed, or a loading line.
   if (config === null) {
     return <p className="message">{message || 'Loading...'}</p>
   }
 
+  // <> ... </> is a fragment: it groups the pieces without adding an element to the page
   return (
     <>
       <p className="signed-in">
@@ -67,8 +72,11 @@ function GameScreen({ user, onSignOut }) {
           ref={rulesButtonRef}
           className="link-button rules-button"
           aria-label="How to play"
+          // aria-expanded and aria-controls tell screen readers that this button opens the
+          // element with id "rules-panel", and whether that panel is open right now
           aria-expanded={isRulesOpen}
           aria-controls="rules-panel"
+          // open or close the panel, then let go of focus if the click came from the mouse
           onClick={(event) => {
             toggleRules()
             blurAfterMouseClick(event)
@@ -79,6 +87,7 @@ function GameScreen({ user, onSignOut }) {
         </button>
         <button
           className="link-button"
+          // sign out, then let go of focus if the click came from the mouse
           onClick={(event) => {
             onSignOut()
             blurAfterMouseClick(event)
@@ -115,6 +124,7 @@ function GameScreen({ user, onSignOut }) {
         {game !== null && <Players game={game} currentUser={user} />}
         <GameList
           games={games}
+          // null when no game is open, so no row in the list is marked as the current one
           currentGameId={game !== null ? game.id : null}
           hasMore={hasMoreGames}
           onOpen={openGame}
@@ -122,6 +132,7 @@ function GameScreen({ user, onSignOut }) {
         />
       </div>
 
+      {/* role="status" makes screen readers read a new message out without moving focus */}
       <p className="message" role="status">
         {message}
       </p>

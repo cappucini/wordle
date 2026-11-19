@@ -1,3 +1,4 @@
+// The sign-in form, which can switch to creating an account.
 import { useState } from 'react'
 import { errorText } from '../errorText'
 import { getGameIdFromUrl } from '../gameUrl'
@@ -9,13 +10,17 @@ function AuthForm({ onSignIn, onCreateAccount, notice }) {
   const [mode, setMode] = useState('sign-in') // 'sign-in' or 'create'
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  // the problem to show under the fields, or '' when there is none
   const [message, setMessage] = useState('')
+  // true while a request is on its way, so the form cannot be sent twice
   const [isSending, setIsSending] = useState(false)
 
   const isCreating = mode === 'create'
   // a game ID in the address bar means this visitor followed someone's invite link
   const hasInvite = getGameIdFromUrl() !== null
 
+  // Runs when the form is sent, by the button or by Enter in a field. Checks the fields,
+  // then signs in or creates the account, and shows a message if that fails.
   async function handleSubmit(event) {
     event.preventDefault() // stop the browser from reloading the page, its default for forms
     if (isSending) {
@@ -42,6 +47,7 @@ function AuthForm({ onSignIn, onCreateAccount, notice }) {
     }
   }
 
+  // Flips between signing in and creating an account. What was typed is kept.
   function switchMode() {
     setMode(isCreating ? 'sign-in' : 'create')
     setMessage('')
@@ -62,7 +68,9 @@ function AuthForm({ onSignIn, onCreateAccount, notice }) {
         <input
           type="text"
           value={username}
+          // a "controlled" input: React holds the text in state, and each keystroke updates it
           onChange={(event) => setUsername(event.target.value)}
+          // autoComplete tells the browser's password manager what each field is for
           autoComplete="username"
           autoCapitalize="none"
           spellCheck={false}
@@ -86,6 +94,7 @@ function AuthForm({ onSignIn, onCreateAccount, notice }) {
         </p>
       )}
 
+      {/* role="alert" makes screen readers read the message out as soon as it appears */}
       <p className="message" role="alert">
         {message}
       </p>
@@ -94,6 +103,7 @@ function AuthForm({ onSignIn, onCreateAccount, notice }) {
         {isCreating ? 'Create account' : 'Sign in'}
       </button>
 
+      {/* type="button" keeps this one from sending the form; it only switches the mode */}
       <button className="link-button" type="button" onClick={switchMode}>
         {isCreating ? 'I already have an account' : 'New here? Create an account'}
       </button>
@@ -125,6 +135,7 @@ function checkInputs(username, password, isCreating) {
   if (!isCreating) {
     return '' // when signing in, let the backend decide; it answers "wrong username or password"
   }
+  // the pattern matches only when every character is a letter, a digit or an underscore
   if (name.length < 3 || name.length > 20 || !/^[a-zA-Z0-9_]+$/.test(name)) {
     return 'Usernames are 3 to 20 letters, numbers or underscores.'
   }

@@ -12,23 +12,33 @@ CREATE_HEADING = "Create an account"
 
 
 class AuthPage(Page):
+    """The sign-in / create-account form, as a person sees and uses it.
+
+    Tests call these methods instead of looking for elements themselves.
+    """
     # ---- selectors ----
 
     def _field(self, label: str):
+        """The input box that sits under this label."""
+        # XPath: the <label> that has a <span> reading `label` inside it, then the <input>
+        # inside that same <label>
         return self.driver.find_element(
             "xpath", f'//label[.//span[normalize-space()="{label}"]]//input'
         )
 
     def _heading(self) -> str:
+        """The form's heading, or "" when the form is not on the page."""
         headings = self.driver.find_elements("css selector", "form h2")
         return headings[0].text if headings else ""
 
     # ---- what the page shows ----
 
     def is_shown(self) -> bool:
+        """Whether the form is on the page, in either its sign-in or create-account state."""
         return self._heading() in (SIGN_IN_HEADING, CREATE_HEADING)
 
     def wait_until_shown(self) -> "AuthPage":
+        """Waits for the form to appear."""
         self.wait_until(self.is_shown, "the sign-in form is shown")
         return self
 
@@ -37,43 +47,55 @@ class AuthPage(Page):
         return self.driver.find_element("css selector", '[role="alert"]').text
 
     def has_invite_notice(self) -> bool:
+        """Whether the form says the visitor arrived through an invite link."""
         return self.has_text("You've been invited to a game.")
 
     # ---- measuring the layout ----
     # Used by test_layout.py. Positions are in the window's own coordinates.
 
     def _box_of(self, element) -> Box:
+        """Where an element is in the window."""
+        # Selenium measures from the top of the whole page; taking away how far the page
+        # is scrolled gives the position in the window
         rect = element.rect
         scroll_x, scroll_y = self.driver.execute_script("return [window.scrollX, window.scrollY]")
         left, top = rect["x"] - scroll_x, rect["y"] - scroll_y
         return Box(left, top, left + rect["width"], top + rect["height"])
 
     def form_box(self) -> Box:
+        """Where the form is."""
         return self._box_of(self.driver.find_element("css selector", "form"))
 
     def submit_button_box(self) -> Box:
+        """Where the "Sign in" button is."""
         return self._box_of(self.button("Sign in"))
 
     def explanation_box(self) -> Box:
+        """Where the "How to play" explanation is."""
         return self._box_of(
             self.driver.find_element("css selector", 'section[aria-label="How to play"]')
         )
 
     def window_height(self) -> int:
+        """The height of the visible page in pixels."""
         return self.driver.execute_script("return window.innerHeight")
 
     # ---- what a person does ----
 
     def _fill_in(self, username: str, password: str) -> None:
+        """Types into the two fields. Does not submit."""
         self._field("Username").send_keys(username)
         self._field("Password").send_keys(password)
 
     def sign_in(self, username: str, password: str) -> None:
+        """Signs in with an existing account. Does not wait for the game screen."""
         self.wait_until_shown()
         self._fill_in(username, password)
         self.button("Sign in").click()
 
     def create_account(self, username: str, password: str) -> None:
+        """Switches the form to "Create an account", fills it in and submits it.
+        Does not wait for the game screen."""
         self.wait_until_shown()
         self.button("New here? Create an account").click()
         self.wait_until(lambda: self._heading() == CREATE_HEADING, "the create-account form is shown")

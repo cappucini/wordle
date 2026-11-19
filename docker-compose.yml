@@ -1,3 +1,6 @@
+# The development stack: a Postgres database and the backend, started with
+# `docker compose up --build`. The frontend runs separately with `npm run dev`.
+
 services:
   db:
     image: postgres:16

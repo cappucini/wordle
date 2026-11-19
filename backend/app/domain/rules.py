@@ -1,3 +1,7 @@
+"""The rules of the game as plain numbers and names: allowed word lengths, guesses per game,
+players per game, sign-in lengths and request limits, and what counts as won or lost.
+"""
+
 from enum import Enum
 
 # Word length limits and turn allowance
@@ -30,25 +34,34 @@ MAX_REFUSED_SIGNUPS_PER_ADDRESS = 30  # sign-ups refused because the username wa
 MAX_LIVE_CONNECTIONS_PER_USER = 10  # WebSockets one player may hold open: about ten tabs
 
 
+# Both enums below also inherit from str, so a member behaves like its text value:
+# LetterResult.correct == "correct", and it is written to JSON as plain "correct".
 class LetterResult(str, Enum):
+    """How one letter of a guess scored."""
+
     correct = "correct"  # right letter, right position
     present = "present"  # letter is in the answer, wrong position
     absent = "absent"  # letter is not in the answer
 
 
 class GameStatus(str, Enum):
+    """Where a game stands: still being played, won or lost."""
+
     in_progress = "in_progress"
     won = "won"
     lost = "lost"
 
 
 def max_guesses_for(word_length: int) -> int:
+    """How many guesses a game with words of this length allows."""
     return word_length + EXTRA_GUESSES
 
 
 def next_status(
     guesses_used: int, max_guesses: int, guessed_correctly: bool
 ) -> GameStatus:
+    """The game's status after a guess: won if it was right, lost if it was the last one
+    allowed, otherwise still in progress."""
     if guessed_correctly:
         return GameStatus.won
     if guesses_used >= max_guesses:
