@@ -1,3 +1,4 @@
+// The top of the page: shows the sign-in form to a visitor, or the game to a signed-in player.
 import './App.css'
 import GameScreen from './GameScreen'
 import AuthForm from './components/AuthForm'
@@ -23,6 +24,7 @@ function App() {
     signOut,
   } = useAuth()
 
+  // Signs the player out. Passed to the game screen for its "Sign out" button.
   function handleSignOut() {
     // Forget which game was open. Otherwise the next person to sign in on this browser
     // would be taken to it, and opening a game's link is how a player joins it.
@@ -36,6 +38,7 @@ function App() {
 
       {/* the title above stays on screen even if something below fails while drawing */}
       <ErrorBoundary>
+        {/* `condition && <X />` draws X only when the condition is true, and nothing otherwise */}
         {isCheckingSignIn && <p className="message">Loading...</p>}
 
         {/* signed out: how the game works on the left, the sign-in form on the right

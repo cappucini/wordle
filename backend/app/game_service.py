@@ -1,3 +1,8 @@
+"""The game logic behind the routes in app/api/v1/games.py: creating, listing, opening and
+joining games, and submitting guesses. Knows nothing about HTTP; it works with the database
+and raises the errors in app/domain/errors.py.
+"""
+
 from datetime import datetime
 from uuid import UUID
 
@@ -25,6 +30,10 @@ from app.words import lookup
 
 
 def create_game(session: Session, user: UserRow, word_length: int) -> GameRow:
+    """Starts a game with a random answer of this length, owned by the user.
+
+    Raises NoWordsAvailable if no answer words of that length are loaded.
+    """
     game = GameRow(
         answer=lookup.random_answer(session, word_length),
         word_length=word_length,
@@ -38,6 +47,11 @@ def create_game(session: Session, user: UserRow, word_length: int) -> GameRow:
 
 
 def get_game(session: Session, user: UserRow, game_id: UUID) -> GameRow:
+    """Returns the game, but only to one of its players.
+
+    Raises GameNotFound if there is no such game, and NotAPlayer if the user is not in it.
+    """
+    # session.get looks a row up by its primary key, and returns None if there is none
     game = session.get(GameRow, game_id)
     if game is None:
         raise GameNotFound(f"Game {game_id} not found")
@@ -75,8 +89,10 @@ def list_games(
         # "older than the last game seen": compares (created_at, id) as a pair
         query = query.where(tuple_(GameRow.created_at, GameRow.id) < after)
 
+    # scalars() gives the GameRow objects themselves rather than one-item result rows
     games = list(session.scalars(query))
     has_more = len(games) > limit
+    # the extra row was only there to answer "is there more?"; it is not part of the page
     return games[:limit], has_more
 
 
@@ -86,7 +102,8 @@ def join_game(session: Session, user: UserRow, game_id: UUID) -> tuple[GameRow, 
     Returns the game, and whether the user was added just now (False if already a player).
     """
     # Lock the game row, so two people joining at the same moment are handled one at a time
-    # and the player limit can't be passed.
+    # and the player limit can't be passed. with_for_update is SQL's SELECT ... FOR UPDATE:
+    # a second request asking for the same row waits until this one commits.
     game = session.get(GameRow, game_id, with_for_update=True)
     if game is None:
         raise GameNotFound(f"Game {game_id} not found")
@@ -107,6 +124,12 @@ def join_game(session: Session, user: UserRow, game_id: UUID) -> tuple[GameRow, 
 def submit_guess(
     session: Session, user: UserRow, game_id: UUID, word: str
 ) -> tuple[GuessRow, GameRow]:
+    """Adds a guess to the game and works out whether the game is now won or lost.
+
+    Returns the new guess and the updated game. Raises GameNotFound, NotAPlayer, GameOver
+    if the game has finished, or InvalidGuess if the word is the wrong length or is not
+    in the word list.
+    """
     # lock the game row so two guesses at the same moment are handled one at a time;
     # with several players this is what keeps the shared guess limit from being passed
     game = session.get(GameRow, game_id, with_for_update=True)
@@ -133,9 +156,11 @@ def submit_guess(
 
 
 def _is_player(game: GameRow, user: UserRow) -> bool:
+    """True if the user is one of the game's players."""
     return any(player.id == user.id for player in game.players)
 
 
 def _require_player(game: GameRow, user: UserRow) -> None:
+    """Raises NotAPlayer unless the user is one of the game's players."""
     if not _is_player(game, user):
         raise NotAPlayer("You are not a player in this game")

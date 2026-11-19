@@ -29,6 +29,7 @@ def test_cursor_keeps_microseconds():
     earlier = CREATED_AT
     later = CREATED_AT + timedelta(microseconds=1)
 
+    # decode_cursor returns (created_at, game_id); [0] is the time
     assert decode_cursor(encode_cursor(earlier, GAME_ID))[0] < decode_cursor(
         encode_cursor(later, GAME_ID)
     )[0]
@@ -47,6 +48,7 @@ def test_cursor_keeps_the_time_zone():
 def test_cursor_is_safe_to_put_in_a_url():
     for _ in range(50):
         cursor = encode_cursor(CREATED_AT, uuid4())
+        # only the characters URL-safe base64 uses
         assert re.fullmatch(r"[A-Za-z0-9_=-]+", cursor)
 
 

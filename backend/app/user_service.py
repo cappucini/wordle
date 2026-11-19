@@ -2,8 +2,8 @@
 
 How the two files work together
 -------------------------------
-# users.py, a separate file, is the HTTP layer. It contains the route handlers, which receive the requests
-# the frontend sends, call a function here, and build the response.
+users.py, a separate file, is the HTTP layer. It contains the route handlers, which receive the requests
+the frontend sends, call a function here, and build the response.
 
 This file, user_service.py, knows nothing about HTTP: it never sees a request, a cookie or a status
 code. It takes plain values, talks to the database, and returns plain values or raises one
@@ -68,6 +68,7 @@ def register(
         # two people registered the same name at the same moment; the database's
         # unique rule on username let only one through
         session.rollback()
+        # `from None` leaves the database's own error out of the traceback
         raise UsernameTaken(f"The username '{username}' is already taken") from None
 
     # a new account is signed in straight away, so the route can set the cookie at once
@@ -84,6 +85,7 @@ def login(session: Session, username: str, password: str) -> tuple[UserRow, str,
     """
     user = _find_user(session, username)
     stored_hash = user.password_hash if user is not None else _DUMMY_HASH
+    # always run the (slow) check, even for an unknown username; see _DUMMY_HASH above
     password_matches = verify_password(password, stored_hash)
     if user is None or not password_matches:
         # one message for both cases, so it doesn't reveal whether the username exists.
@@ -143,6 +145,8 @@ def renew_session_if_due(session: Session, auth_session: AuthSessionRow) -> bool
     """
     now = datetime.now(timezone.utc)
     full_length = timedelta(days=SESSION_DAYS)
+    # The row does not record when it was last extended, but it can be worked out:
+    # the time left is (expires_at - now), and it started at the full length.
     time_since_last_extended = full_length - (auth_session.expires_at - now)
     if time_since_last_extended < timedelta(days=SESSION_RENEW_AFTER_DAYS):
         return False

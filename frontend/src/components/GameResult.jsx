@@ -6,7 +6,9 @@
 function GameResult({ game, currentUser }) {
   if (game.status === 'won') {
     const guessCount = game.guesses.length
+    // the last guess is the one that won
     const winner = game.guesses[guessCount - 1].guessed_by
+    // `winner &&` covers a guess with no name on it: then the banner just says "You"
     const someoneElseWon = winner && winner !== currentUser.username
     return (
       <p className="result won" role="status">

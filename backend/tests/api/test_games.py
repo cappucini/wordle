@@ -53,8 +53,10 @@ def test_create_game_returns_a_new_empty_game(player):
 
     assert response.status_code == 201
     game = response.json()
+    # set(game) is the keys of the JSON object: exactly these fields, nothing extra
     assert set(game) == GAME_FIELDS
     UUID(game["id"])  # raises if it is not a UUID
+    # and this raises if it is not a date and time
     datetime.fromisoformat(game["created_at"])
     assert game["word_length"] == 5
     assert game["max_guesses"] == 6
@@ -89,6 +91,7 @@ def test_create_game_allows_one_more_guess_than_letters(player, word_length):
     assert game["guesses_remaining"] == word_length + 1
 
 
+# just under and just over the limits, zero, negative, and three that are not whole numbers
 @pytest.mark.parametrize("word_length", [4, 9, 0, -5, "five", 5.5, None])
 def test_create_game_with_a_length_outside_the_limits_is_refused(player, word_length):
     response = player.post("/games", json={"word_length": word_length})
@@ -120,6 +123,7 @@ def test_create_game_when_no_answer_words_are_loaded(player, db):
     answer = db.query(WordRow).filter_by(text=ANSWERS[5]).one()
     answer.is_answer = False
     db.commit()
+    # put the word back even if the request raises: the words are not reset between tests
     try:
         response = player.post("/games", json={"word_length": 5})
     finally:

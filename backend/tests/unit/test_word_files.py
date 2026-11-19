@@ -12,10 +12,12 @@ from app.domain.rules import MAX_WORD_LENGTH, MIN_WORD_LENGTH
 from app.words.seed import DATA_DIR, read_words
 
 LENGTHS = range(MIN_WORD_LENGTH, MAX_WORD_LENGTH + 1)
+# answers_5.txt, valid_5.txt, answers_6.txt, ... both kinds of file for every length
 FILES = [f"{kind}_{length}.txt" for length in LENGTHS for kind in ("answers", "valid")]
 
 
 def lines_of(file_name: str) -> list[str]:
+    """The non-blank lines of a word file, exactly as written (not trimmed or lowercased)."""
     return [line for line in (DATA_DIR / file_name).read_text().splitlines() if line.strip()]
 
 
@@ -27,6 +29,7 @@ def test_word_file_exists_and_has_words(file_name):
 
 @pytest.mark.parametrize("file_name", FILES)
 def test_every_word_has_the_length_in_the_file_name(file_name):
+    # the digit between "_" and ".txt" in the file name is the word length
     length = int(re.search(r"_(\d)\.txt$", file_name).group(1))
 
     wrong = [word for word in lines_of(file_name) if len(word.strip()) != length]
@@ -56,6 +59,7 @@ def test_guess_list_is_larger_than_answer_list(length):
 
 
 def test_read_words_trims_lowercases_and_skips_blank_lines(tmp_path):
+    # tmp_path is one of pytest's own fixtures: an empty folder made just for this test
     path = tmp_path / "words.txt"
     path.write_text("crane\n  Slate  \n\n   \nREACT\n")
 
@@ -101,6 +105,7 @@ def test_every_answer_is_also_an_accepted_guess(length):
     answers = set(lines_of(f"answers_{length}.txt"))
     valid = set(lines_of(f"valid_{length}.txt"))
 
+    # <= between sets means "is a subset of"
     assert answers <= valid
 
 

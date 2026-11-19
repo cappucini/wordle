@@ -13,8 +13,13 @@ def crashing_games_list(monkeypatch):
     from app import game_service
 
     def crash(*args, **kwargs):
+        """Stands in for list_games: accepts any arguments and always raises.
+
+        The message holds a made-up secret, so a test can check it never reaches the client.
+        """
         raise RuntimeError("secret internal detail: db password is hunter2")
 
+    # monkeypatch swaps the function in for this test only, and puts the real one back after
     monkeypatch.setattr(game_service, "list_games", crash)
 
 

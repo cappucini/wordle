@@ -1,6 +1,8 @@
+// The "Your games" panel: the player's games, each with a small picture of its board.
 import { useEffect, useRef } from 'react'
 import { blurAfterMouseClick } from '../focus'
 
+// the words shown for each status the backend uses
 const STATUS_TEXT = {
   in_progress: 'in progress',
   won: 'won',
@@ -13,6 +15,7 @@ const STATUS_TEXT = {
 // On a wide screen the list has a fixed height and scrolls inside itself (see App.css), so
 // a long list never pushes the board down the page.
 function GameList({ games, currentGameId, hasMore, onOpen, onLoadMore }) {
+  // points at the <ul> once it is drawn, so the effect below can measure and scroll it
   const listRef = useRef(null)
 
   // Keep the open game in view inside the scrolling list, for example after going Back to
@@ -27,6 +30,7 @@ function GameList({ games, currentGameId, hasMore, onOpen, onLoadMore }) {
     if (current === null) {
       return
     }
+    // compare where the item is with the list's visible box, and scroll just far enough
     const listBox = list.getBoundingClientRect()
     const itemBox = current.getBoundingClientRect()
     if (itemBox.top < listBox.top) {
@@ -34,8 +38,10 @@ function GameList({ games, currentGameId, hasMore, onOpen, onLoadMore }) {
     } else if (itemBox.bottom > listBox.bottom) {
       list.scrollTop += itemBox.bottom - listBox.bottom
     }
+  // runs again whenever a different game is opened or the list changes
   }, [currentGameId, games])
 
+  // no games yet: draw nothing at all, not an empty panel
   if (games.length === 0) {
     return null
   }
@@ -51,6 +57,8 @@ function GameList({ games, currentGameId, hasMore, onOpen, onLoadMore }) {
             <li key={game.id}>
               <button
                 className={isCurrent ? 'game-list-item current' : 'game-list-item'}
+                // aria-current marks the open game for screen readers;
+                // undefined leaves the attribute off
                 aria-current={isCurrent ? 'true' : undefined}
                 onClick={(event) => {
                   onOpen(game.id)
@@ -80,6 +88,7 @@ function GameList({ games, currentGameId, hasMore, onOpen, onLoadMore }) {
                 </span>
                 <span className="game-list-main">{game.word_length} letters</span>
                 <span className={'game-list-status ' + game.status}>{STATUS_TEXT[game.status]}</span>
+                {/* only a shared game says how many players it has */}
                 <span className="game-list-detail">
                   {guessesUsed} of {game.max_guesses} guesses
                   {game.players.length > 1 && ', ' + game.players.length + ' players'}
@@ -93,6 +102,7 @@ function GameList({ games, currentGameId, hasMore, onOpen, onLoadMore }) {
       {hasMore && (
         <button
           className="link-button"
+          // fetch the next page, then let go of focus if the click came from the mouse
           onClick={(event) => {
             onLoadMore()
             blurAfterMouseClick(event)

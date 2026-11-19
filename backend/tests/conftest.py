@@ -45,8 +45,13 @@ def _require_test_database() -> None:
         )
 
 
+# scope="session": this runs once for the whole test run, not once per test
 @pytest.fixture(scope="session")
 def database():
+    """Prepares the test database once per run: fresh tables, and the test word lists.
+
+    Gives the SQLAlchemy engine to the fixtures that depend on it.
+    """
     _require_test_database()
 
     # imported here, after the check, so nothing connects before it
@@ -57,17 +62,26 @@ def database():
     Base.metadata.create_all(engine)
 
     # The application's own seeding code, pointed at the test word lists.
+    # MonkeyPatch.context() puts DATA_DIR back as it was when the `with` block ends.
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(seed, "DATA_DIR", TEST_WORDS_DIR)
         with SessionLocal() as session:
             seed.seed_words_if_empty(session)
 
+    # the fixture pauses here while the tests run; the line after it is the clean-up
     yield engine
     engine.dispose()
 
 
 @pytest.fixture
 def clean_database(database):
+    """Empties the user and game tables and resets the rate limits.
+
+    Every fixture that touches the database depends on this, so it runs before each such test.
+    """
+    # begin() opens a transaction and commits it when the block ends.
+    # TRUNCATE empties the tables in one statement. RESTART IDENTITY starts numbered ids
+    # from 1 again; CASCADE also empties any table that points at these.
     with database.begin() as connection:
         connection.execute(text(f"TRUNCATE {TABLES_TO_EMPTY} RESTART IDENTITY CASCADE"))
     # the log-in and sign-up limits count attempts in memory; start each test from zero,
@@ -84,6 +98,7 @@ def db(clean_database):
     (such as making a sign-in expire)."""
     from app.db import SessionLocal
 
+    # the session is closed when the test that asked for it has finished
     with SessionLocal() as session:
         yield session
 
@@ -98,10 +113,12 @@ def new_client(clean_database):
     clients = []
 
     def make() -> TestClient:
+        """Opens one client, and remembers it so it can be closed after the test."""
         client = TestClient(app)
         clients.append(client)
         return client
 
+    # the test gets the function, not a client, so it can open as many as it needs
     yield make
     for client in clients:
         client.close()
@@ -116,9 +133,11 @@ def client(new_client):
 @pytest.fixture
 def make_player(new_client):
     """Creates an account through the API and returns it signed in."""
+    # an endless 1, 2, 3, ... so each player gets a different default name
     numbers = itertools.count(1)
 
     def make(username: str | None = None, password: str = PASSWORD) -> Player:
+        """Signs up one player with a client of their own. Fails if the sign-up does."""
         username = username or f"player_{next(numbers)}"
         client = new_client()
         response = client.post(
@@ -132,9 +151,11 @@ def make_player(new_client):
 
 @pytest.fixture
 def player(make_player):
+    """A signed-in player with a generated name."""
     return make_player()
 
 
 @pytest.fixture
 def other_player(make_player):
+    """A second signed-in player, for tests where two people meet in a game."""
     return make_player()

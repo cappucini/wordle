@@ -8,6 +8,7 @@ import GameResult from './GameResult'
 import NewGameControls from './NewGameControls'
 import Players from './Players'
 
+// a third player, to fill a three-player game
 const THIRD = { id: 'user-third', username: 'third' }
 
 describe('GameResult', () => {
@@ -80,6 +81,8 @@ describe('GameResult', () => {
 })
 
 describe('GameList', () => {
+  // Draws the list with fake handlers, no games and no more pages. Pass props to change
+  // any of that. Returns the handlers, so a test can check how they were called.
   function renderList(props) {
     const handlers = { onOpen: vi.fn(), onLoadMore: vi.fn() }
     render(<GameList games={[]} currentGameId={null} hasMore={false} {...handlers} {...props} />)
@@ -183,6 +186,7 @@ describe('GameList', () => {
 
   it('draws every guess of the longest possible game, nine rows of eight', () => {
     // the miniature has a fixed size (see App.css), so the row stays the same height
+    // Array.from({ length: 9 }, fn) builds an array of nine items by calling fn nine times
     const nineGuesses = Array.from({ length: 9 }, () => makeGuess('notebook', 'APPPPAAA'))
     const game = makeGame({ id: 'long', word_length: 8, status: 'lost', guesses: nineGuesses })
 
@@ -237,12 +241,15 @@ describe('GameList', () => {
 })
 
 describe('NewGameControls', () => {
+  // Draws the controls with the usual rules (lengths 5 to 8) and 5 chosen. Pass props to
+  // change that. Returns the fake handlers.
   function renderControls(props) {
     const handlers = { onChangeLength: vi.fn(), onStart: vi.fn() }
     render(<NewGameControls config={CONFIG} wordLength={5} {...handlers} {...props} />)
     return handlers
   }
 
+  // The buttons inside the "Word length" group, one per length.
   function lengthButtons() {
     return within(screen.getByRole('group', { name: 'Word length' })).getAllByRole('button')
   }
@@ -290,12 +297,14 @@ describe('NewGameControls: when there are too many lengths for a row of buttons'
   // twelve possible lengths, 4 to 15: more than the eight a row of buttons holds
   const WIDE_CONFIG = { ...CONFIG, min_word_length: 4, max_word_length: 15 }
 
+  // Draws the controls with twelve lengths on offer, which is enough to get the stepper.
   function renderStepper(props) {
     const handlers = { onChangeLength: vi.fn(), onStart: vi.fn() }
     render(<NewGameControls config={WIDE_CONFIG} wordLength={7} {...handlers} {...props} />)
     return handlers
   }
 
+  // Searches limited to the "Word length" group, so the "New game" button is left out.
   function picker() {
     return within(screen.getByRole('group', { name: 'Word length' }))
   }
@@ -321,6 +330,7 @@ describe('NewGameControls: when there are too many lengths for a row of buttons'
     expect(picker().getAllByRole('button')).toHaveLength(2)
     expect(picker().getByRole('button', { name: 'Fewer letters' })).toBeInTheDocument()
     expect(picker().getByRole('button', { name: 'More letters' })).toBeInTheDocument()
+    // the <output> element has the role "status"
     expect(picker().getByRole('status')).toHaveTextContent('7')
   })
 
@@ -364,9 +374,11 @@ describe('NewGameControls: when there are too many lengths for a row of buttons'
 
 describe('Players', () => {
   afterEach(() => {
+    // one test below fakes the clock; put the real one back for the others
     vi.useRealTimers()
   })
 
+  // The "Copy invite link" button, or null when it is not offered or shows another label.
   function inviteButton() {
     return screen.queryByRole('button', { name: 'Copy invite link' })
   }
@@ -404,12 +416,16 @@ describe('Players', () => {
   })
 
   it('copies the page address, confirms it, then goes back to normal', async () => {
+    // fake the clock, so the three-second wait can be skipped instead of sat through
     vi.useFakeTimers()
     const writeText = vi.fn().mockResolvedValue()
+    // a stand-in for the browser's clipboard, so the test can see what was copied
     vi.stubGlobal('navigator', { clipboard: { writeText: writeText } })
     window.history.replaceState({}, '', '/?game=game-1')
     render(<Players game={makeGame()} currentUser={ERICA} />)
 
+    // fireEvent sends the click directly; the async act() lets the clipboard's promise
+    // settle and React redraw before the checks
     await act(async () => {
       fireEvent.click(inviteButton())
     })
@@ -419,6 +435,7 @@ describe('Players', () => {
     expect(screen.getByRole('button', { name: 'Link copied!' })).toBeInTheDocument()
 
     act(() => {
+      // jump the fake clock forward three seconds, which fires the timer that resets the label
       vi.advanceTimersByTime(3000)
     })
     expect(inviteButton()).toBeInTheDocument()

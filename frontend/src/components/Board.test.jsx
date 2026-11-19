@@ -1,3 +1,4 @@
+// Board: the grid of tiles, checked through what a screen reader would be told.
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { makeGame, makeGuess, ERICA, SAM } from '../test/factories'
@@ -8,6 +9,7 @@ function tiles() {
   return screen.getAllByRole('img')
 }
 
+// The aria-label of every tile, in reading order.
 function labels() {
   return tiles().map((tile) => tile.getAttribute('aria-label'))
 }
@@ -46,6 +48,7 @@ describe('Board', () => {
 
     render(<Board game={game} typedWord="" hasError={false} />)
 
+    // the empty slots skip tiles: this takes the 1st, 3rd and 5th
     const [r, , a, , t] = tiles()
     expect(r).toHaveClass('tile', 'present')
     expect(a).toHaveClass('tile', 'correct')

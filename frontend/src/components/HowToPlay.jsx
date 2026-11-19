@@ -14,6 +14,7 @@ const RESULTS = [
 // backend; the sign-in page has not loaded them yet, so it uses these defaults, which
 // match the backend's own (backend/app/domain/rules.py).
 export function Rules({ minLength = 5, maxLength = 8, extraGuesses = 1 }) {
+  // the sentence reads differently when only one word length is allowed
   const lengths =
     minLength === maxLength
       ? `Words have ${minLength} letters`
@@ -24,6 +25,7 @@ export function Rules({ minLength = 5, maxLength = 8, extraGuesses = 1 }) {
       <p className="lead">
         {lengths}, and you get {guesses} than the word has letters.
       </p>
+      {/* <dl> is a description list: each <dt> (a sample tile) is explained by its <dd> */}
       <dl className="legend">
         {RESULTS.map(({ letter, result, meaning }) => (
           <div key={result}>

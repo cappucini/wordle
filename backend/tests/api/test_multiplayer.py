@@ -10,6 +10,7 @@ NOT_A_PLAYER = {"code": "NOT_A_PLAYER", "detail": "You are not a player in this 
 
 
 def as_player(player) -> dict:
+    """A player in the shape the API uses in a game's `players` list."""
     return {"id": player.id, "username": player.username}
 
 
@@ -88,6 +89,7 @@ def test_join_without_a_csrf_token_is_refused(player, other_player):
 @pytest.mark.parametrize("ending", ["won", "lost"])
 def test_joining_a_finished_game_is_refused(player, other_player, ending):
     game = player.create_game()
+    # one right guess to win, or six wrong ones to lose
     for word in ["crane"] if ending == "won" else WRONG_5:
         player.guess(game["id"], word)
 
@@ -130,6 +132,7 @@ def test_a_game_takes_three_players(make_player):
 
 
 def test_fourth_player_is_refused(make_player):
+    # a generator that makes four players, unpacked into four names
     owner, second, third, fourth = (make_player() for _ in range(4))
     game = owner.create_game()
     second.join(game["id"])
@@ -217,6 +220,7 @@ def test_players_share_the_guess_limit(player, other_player):
 
     # six guesses in total, three each, not six each
     for index, word in enumerate(WRONG_5):
+        # take turns: the even positions go to the first player
         guesser = player if index % 2 == 0 else other_player
         last = guesser.guess(game["id"], word)
 

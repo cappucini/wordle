@@ -55,6 +55,7 @@ def test_same_password_hashes_differently_each_time():
 
 
 def test_passwords_with_non_ascii_characters_work():
+    # the \U0001f511 at the end is a key emoji
     password = "pässwörd \U0001f511"
     assert verify_password(password, hash_password(password))
     assert not verify_password("passwrd", hash_password(password))
@@ -78,6 +79,7 @@ def test_malformed_stored_hash_is_refused_without_an_error(stored_hash):
 
 def test_tampered_hash_does_not_verify():
     scheme, salt, key = hash_password(PASSWORD).split("$")
+    # change the first character of the key to a different hex digit
     flipped = "0" if key[0] != "0" else "1"
 
     assert verify_password(PASSWORD, f"{scheme}${salt}${flipped}{key[1:]}") is False
@@ -95,6 +97,7 @@ def test_tokens_are_long_and_safe_to_put_in_a_cookie():
 
 
 def test_tokens_do_not_repeat():
+    # a set keeps one of each value, so any repeat would leave fewer than 1000
     tokens = {new_token() for _ in range(1000)}
     assert len(tokens) == 1000
 

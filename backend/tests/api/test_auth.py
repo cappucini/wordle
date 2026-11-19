@@ -11,6 +11,10 @@ INVALID_CREDENTIALS = {"code": "INVALID_CREDENTIALS", "detail": "Wrong username 
 
 
 def set_session_expiry(db, when: datetime) -> None:
+    """Sets the end date of every sign-in in the database.
+
+    The API has no way to make a sign-in old, so this writes to the table directly.
+    """
     from app.db import AuthSessionRow
 
     for row in db.query(AuthSessionRow).all():
@@ -26,9 +30,11 @@ def test_sign_up_creates_the_account_and_signs_in(client):
 
     assert response.status_code == 201
     body = response.json()
+    # set(body) is the keys of the JSON object: exactly these fields, nothing extra
     assert set(body) == {"user", "csrf_token"}
     assert set(body["user"]) == {"id", "username"}
     assert body["user"]["username"] == "erica"
+    # 32 random bytes, written in URL-safe base64, come to 43 characters
     assert isinstance(body["csrf_token"], str) and len(body["csrf_token"]) >= 43
     assert SESSION_COOKIE in response.cookies
 
@@ -47,6 +53,7 @@ def test_sign_up_stores_the_username_trimmed_and_lowercased(client):
     assert response.json()["user"]["username"] == "erica_1"
 
 
+# parametrize runs the test once for each spelling in the list
 @pytest.mark.parametrize("second_spelling", ["erica", "ERICA", " Erica "])
 def test_sign_up_with_a_taken_username_is_refused(client, new_client, second_spelling):
     client.post(f"{API}/users", json={"username": "erica", "password": PASSWORD})
@@ -64,6 +71,8 @@ def test_sign_up_with_a_taken_username_is_refused(client, new_client, second_spe
 
 
 @pytest.mark.parametrize(
+    # Each pytest.param is one run of the test: a request body, and the field the error
+    # should name. `id` is what the run is called in the test report.
     "body, field",
     [
         pytest.param({"username": "ab", "password": PASSWORD}, "username", id="username too short"),
@@ -212,6 +221,7 @@ def test_unknown_session_cookie_is_not_authenticated(client):
     ],
 )
 def test_routes_that_need_a_sign_in_refuse_a_visitor(client, method, path):
+    # the same body for every route: the sign-in check comes before the body is looked at
     response = client.request(method, API + path, json={"word_guessed": "crane"})
 
     assert response.status_code == 401
@@ -231,6 +241,7 @@ def test_expired_session_is_refused_and_removed(player, db):
         "detail": "Your sign-in has expired. Sign in again",
     }
     # the expired row is deleted, so the next attempt is simply an unknown session
+    # the session remembers the rows it has read; expire_all() makes it read them again
     db.expire_all()
     assert db.query(AuthSessionRow).count() == 0
     assert player.get("/users/me").json() == NOT_AUTHENTICATED
@@ -255,6 +266,7 @@ def test_session_that_has_not_expired_yet_still_works(player, db):
 
 
 def session_expiry(db):
+    """When the one sign-in in the database ends, read fresh from the table."""
     from app.db import AuthSessionRow
 
     db.expire_all()
@@ -269,9 +281,11 @@ def test_session_used_after_a_day_is_extended_to_seven_days_from_now(player, db)
 
     assert response.status_code == 200
     remaining = session_expiry(db) - datetime.now(timezone.utc)
+    # seven days, give or take the moment the test itself takes
     assert abs(remaining - timedelta(days=7)) < timedelta(seconds=5)
     # the browser's copy of the cookie is renewed to match
     assert "wordle_session=" in response.headers["set-cookie"]
+    # 604800 seconds is seven days
     assert "Max-Age=604800" in response.headers["set-cookie"]
     assert "HttpOnly" in response.headers["set-cookie"]
 
@@ -296,6 +310,10 @@ def test_any_signed_in_request_extends_the_session(player, db):
 
 
 def session_cookies_set_by(response) -> list[str]:
+    """The Set-Cookie headers of a response that are about the session cookie.
+
+    A response can carry several Set-Cookie headers, so they are read as a list.
+    """
     return [
         header
         for header in response.headers.get_list("set-cookie")
@@ -312,6 +330,7 @@ def test_cookie_is_renewed_even_when_the_request_that_extends_the_session_is_ref
 
     assert response.status_code == 422
     assert session_expiry(db) - datetime.now(timezone.utc) > timedelta(days=6, hours=23)
+    # unpacking into [cookie] fails unless the list has exactly one item
     [cookie] = session_cookies_set_by(response)
     assert "Max-Age=604800" in cookie
     assert "HttpOnly" in cookie
@@ -344,6 +363,7 @@ def test_an_expired_session_is_not_brought_back(player, db):
     set_session_expiry(db, datetime.now(timezone.utc) - timedelta(seconds=1))
 
     assert player.get("/users/me").status_code == 401
+    # asked twice: the first refusal must not have renewed the sign-in
     assert player.get("/users/me").status_code == 401
 
 

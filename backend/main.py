@@ -1,3 +1,7 @@
+"""The backend's starting point: builds the FastAPI app, plugs in the routes, and turns the
+game's own errors (game not found, invalid guess, and so on) into JSON error responses.
+"""
+
 import logging
 from contextlib import asynccontextmanager
 
@@ -32,8 +36,15 @@ from app.words.seed import seed_words_if_empty
 logger = logging.getLogger(__name__)
 
 
+# @asynccontextmanager turns a function with one `yield` into something FastAPI can
+# enter when the server starts and leave when it stops.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Runs once when the server starts: creates the tables and loads the word lists.
+
+    The code before the `yield` runs at start-up. Anything after it would run at
+    shutdown; there is nothing to do then.
+    """
     create_tables()
     with SessionLocal() as session:
         seed_words_if_empty(session)
@@ -48,8 +59,10 @@ for router in ROUTERS:
     app.include_router(router)
 
 # Then, registers multiple exception handlers of what to do for each error type
+# @app.exception_handler(X) means: when a route raises X, call the function below and
+# send what it returns as the response.
 
-# Handler that manages what happens if words table is empty, words are cleared by hands while server is running (TRUNCATE Words);
+# Handler that manages what happens if words table is empty, words are cleared by hand while server is running (TRUNCATE Words);
 # or answers_N.txt file is empty or missing
 @app.exception_handler(NoWordsAvailable)
 def handle_no_words(request: Request, exc: NoWordsAvailable):
@@ -64,7 +77,7 @@ def handle_invalid_cursor(request: Request, exc: InvalidCursor):
         status_code=422, content={"code": "INVALID_CURSOR", "detail": str(exc)}
     )
 
-# Additional handler that replaes built-in validation error response with my own
+# Additional handler that replaces built-in validation error response with my own
 # every error will have {"code": ..., "detail": "text"} so frontend can parse easier
 @app.exception_handler(RequestValidationError)
 def handle_validation_error(request: Request, exc: RequestValidationError):
@@ -81,6 +94,7 @@ def handle_validation_error(request: Request, exc: RequestValidationError):
 
 @app.exception_handler(GameNotFound)
 def handle_game_not_found(request: Request, exc: GameNotFound):
+    """Answers 404 when no game has the requested id."""
     return JSONResponse(
         status_code=404, content={"code": "GAME_NOT_FOUND", "detail": str(exc)}
     )
@@ -88,6 +102,7 @@ def handle_game_not_found(request: Request, exc: GameNotFound):
 
 @app.exception_handler(GameOver)
 def handle_game_over(request: Request, exc: GameOver):
+    """Answers 409 for a guess at, or an attempt to join, a game that has finished."""
     return JSONResponse(
         status_code=409, content={"code": "GAME_OVER", "detail": str(exc)}
     )
@@ -95,6 +110,7 @@ def handle_game_over(request: Request, exc: GameOver):
 
 @app.exception_handler(InvalidGuess)
 def handle_invalid_guess(request: Request, exc: InvalidGuess):
+    """Answers 422 for a guess of the wrong length or one not in the word list."""
     return JSONResponse(
         status_code=422, content={"code": "INVALID_GUESS", "detail": str(exc)}
     )
@@ -112,6 +128,7 @@ def handle_not_authenticated(request: Request, exc: NotAuthenticated):
 
 @app.exception_handler(InvalidCredentials)
 def handle_invalid_credentials(request: Request, exc: InvalidCredentials):
+    """Answers 401 for a log-in with the wrong username or password."""
     return JSONResponse(
         status_code=401, content={"code": "INVALID_CREDENTIALS", "detail": str(exc)}
     )
@@ -119,6 +136,7 @@ def handle_invalid_credentials(request: Request, exc: InvalidCredentials):
 
 @app.exception_handler(UsernameTaken)
 def handle_username_taken(request: Request, exc: UsernameTaken):
+    """Answers 409 for a sign-up with a username that already exists."""
     return JSONResponse(
         status_code=409, content={"code": "USERNAME_TAKEN", "detail": str(exc)}
     )
@@ -153,6 +171,7 @@ def handle_too_many_attempts(request: Request, exc: TooManyAttempts):
 
 @app.exception_handler(GameFull)
 def handle_game_full(request: Request, exc: GameFull):
+    """Answers 409 when joining a game that already has the most players allowed."""
     return JSONResponse(
         status_code=409, content={"code": "GAME_FULL", "detail": str(exc)}
     )
@@ -169,8 +188,11 @@ def handle_game_full(request: Request, exc: GameFull):
 @app.middleware("http")
 async def finish_response(request: Request, call_next):
     try:
+        # call_next runs the rest of the app (the route and everything it uses)
+        # and gives back the response it produced
         response = await call_next(request)
     except Exception:
+        # logger.exception writes the message and the full traceback to the server log
         logger.exception("Unhandled error on %s %s", request.method, request.url.path)
         response = JSONResponse(
             status_code=500,
@@ -186,7 +208,7 @@ async def finish_response(request: Request, call_next):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=True,  # lets the browser send the session cookie with its requests
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -194,9 +216,11 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
+    """A fixed greeting at the site's root address. Shows that the server is answering."""
     return {"message": "Hello World"}
 
 
 @app.get("/health")
 def health_check():
+    """Answers that the server is running. It does not check the database."""
     return {"status": "healthy"}

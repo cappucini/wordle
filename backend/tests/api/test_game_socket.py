@@ -20,6 +20,7 @@ def notices(monkeypatch):
     from app.live import watchers
 
     announced = []
+    # replace notify with a function that only writes down the id of the game
     monkeypatch.setattr(watchers, "notify", lambda game_id: announced.append(str(game_id)))
     return announced
 
@@ -31,6 +32,8 @@ def test_another_players_guess_is_announced_to_a_watching_page(player, other_pla
     game = player.create_game()
     other_player.join(game["id"])
 
+    # the socket is open inside the `with` block and closed when the block ends;
+    # receive_json() waits for the next message from the server
     with player.watch(game["id"]) as socket:
         other_player.guess(game["id"], "slate")
 
@@ -103,6 +106,7 @@ def test_a_saved_guess_is_announced_for_its_game(player, notices):
     assert notices == [game["id"]]
 
 
+# not in the word list, too long for this game, too short for any game
 @pytest.mark.parametrize("word", [NOT_A_WORD, "planet", "cran"])
 def test_a_refused_guess_is_not_announced(player, notices, word):
     game = player.create_game()
@@ -151,6 +155,7 @@ def test_opening_a_game_you_are_already_in_is_not_announced(player, other_player
 
 
 def test_being_refused_from_a_full_game_is_not_announced(make_player, notices):
+    # a generator that makes four players, unpacked into four names
     owner, second, third, fourth = (make_player() for _ in range(4))
     game = owner.create_game()
     second.join(game["id"])

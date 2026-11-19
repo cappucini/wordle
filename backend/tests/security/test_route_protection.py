@@ -24,6 +24,7 @@ CHANGING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 # Read from the OpenAPI description FastAPI generates (the same list /docs shows),
 # which covers every route however it was registered.
+# The two `for`s give one (METHOD, path) pair for each method of each path.
 ALL_ROUTES = sorted(
     (method.upper(), path)
     for path, operations in app.openapi()["paths"].items()
@@ -40,16 +41,19 @@ BODY = {"word_guessed": "crane"}
 
 
 def fill(path: str) -> str:
+    """Puts a random game id where a route's path has {game_id}."""
     return path.replace("{game_id}", str(uuid4()))
 
 
 def test_the_route_table_was_read():
     # guards the tests below against silently running on an empty list
     assert len(ALL_ROUTES) >= 12
+    # <= between sets means "is a subset of": every public route is really in the table
     assert PUBLIC_ROUTES <= set(ALL_ROUTES)
     assert ("POST", "/api/v1/games/{game_id}/guesses") in PROTECTED_CHANGING_ROUTES
 
 
+# runs once per route; each (method, path) pair is unpacked into the two arguments
 @pytest.mark.parametrize("method, path", PROTECTED_ROUTES)
 def test_route_refuses_a_visitor_who_is_not_signed_in(client, method, path):
     response = client.request(method, fill(path), json=BODY)
@@ -60,6 +64,7 @@ def test_route_refuses_a_visitor_who_is_not_signed_in(client, method, path):
 
 @pytest.mark.parametrize("method, path", PROTECTED_ROUTES)
 def test_route_refuses_a_made_up_session_cookie(client, method, path):
+    # as long as a real token, but not one the server ever issued
     put_session_cookie(client, "x" * 43)
 
     response = client.request(method, fill(path), json=BODY)
@@ -70,6 +75,7 @@ def test_route_refuses_a_made_up_session_cookie(client, method, path):
 
 @pytest.mark.parametrize("method, path", sorted(PUBLIC_ROUTES))
 def test_public_route_does_not_ask_for_a_sign_in(client, method, path):
+    # the request may still be refused for its body; what matters is that it is not asked to sign in
     response = client.request(method, path, json={"username": "nobody", "password": "x"})
 
     assert response.json().get("code") != "NOT_AUTHENTICATED"
@@ -83,6 +89,7 @@ def test_changing_route_refuses_a_request_without_a_csrf_token(player, method, p
     assert response.json()["code"] == "CSRF_CHECK_FAILED"
 
 
+# two parametrize lines multiply: every route is tried with every token
 @pytest.mark.parametrize("method, path", PROTECTED_CHANGING_ROUTES)
 @pytest.mark.parametrize("token", ["", "wrong", "x" * 43])
 def test_changing_route_refuses_a_wrong_csrf_token(player, method, path, token):

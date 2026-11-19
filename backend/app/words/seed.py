@@ -1,3 +1,5 @@
+"""Loads the word-list text files into the database's words table when the backend first starts."""
+
 from pathlib import Path
 
 from sqlalchemy import select
@@ -25,6 +27,8 @@ def read_words(path: Path) -> set[str]:
 
 
 def words_table_is_empty(session: Session) -> bool:
+    """True if the words table has no rows at all."""
+    # asking for one row is enough to know, and cheaper than counting them all
     first_row = session.execute(select(WordRow.id).limit(1)).first()
     return first_row is None
 

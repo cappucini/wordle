@@ -14,10 +14,12 @@ SHORTHAND = {
 
 
 def row(pattern: str) -> list[LetterResult]:
+    """Turns shorthand such as "CPAAC" into the list of results it stands for."""
     return [SHORTHAND[letter] for letter in pattern]
 
 
 @pytest.mark.parametrize(
+    # `expected` is written in the shorthand above: C correct, P present, A absent
     "guess, answer, expected",
     [
         # --- no repeated letters ---
@@ -68,6 +70,7 @@ def test_score(guess, answer, expected):
 
 def test_score_returns_one_result_per_letter():
     for word in ["crane", "planet", "kitchen", "absolute"]:
+        # word[::-1] is the word backwards: a different guess of the same length
         assert len(score(word, word[::-1])) == len(word)
 
 

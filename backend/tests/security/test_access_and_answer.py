@@ -11,6 +11,8 @@ ANSWER = ANSWERS[5]
 
 
 @pytest.mark.parametrize(
+    # each case is a small function that makes one request as the outsider; the test
+    # calls it with the outsider and the game's id
     "request_as_outsider",
     [
         pytest.param(lambda outsider, game_id: outsider.get(f"/games/{game_id}"), id="read the game"),
@@ -68,9 +70,12 @@ def test_games_list_never_shows_another_users_game(player, other_player):
 def test_a_guess_cannot_be_attributed_to_someone_else(player, other_player, extra):
     game = player.create_game()
     other_player.join(game["id"])
+    # the parameters are written before any player exists, so "x" marks the place
+    # where the other player's id goes
     extra = {key: other_player.id if value == "x" else value for key, value in extra.items()}
 
     response = player.post(
+        # ** copies the extra field into the body, beside word_guessed
         f"/games/{game['id']}/guesses", json={"word_guessed": "slate", **extra}
     )
 
@@ -90,6 +95,7 @@ def test_a_game_cannot_be_created_in_someone_elses_name(player, other_player):
 
 
 def assert_answer_is_hidden(response):
+    """Checks that a request succeeded and that the answer is nowhere in its response."""
     assert response.status_code < 400, response.text
     assert ANSWER not in response.text, f"the answer leaked in: {response.text}"
 
@@ -117,6 +123,7 @@ def test_no_response_reveals_the_answer_before_the_game_ends(player, other_playe
 
 
 @pytest.mark.parametrize(
+    # `ids` names the cases in the test report, in the same order as the values
     "bad_guess",
     [NOT_A_WORD, "planet", "cran", "cran3"],
     ids=["not a word", "wrong length for the game", "too short", "has a digit"],

@@ -1,9 +1,11 @@
+// Keyboard: the on-screen keys, how they are coloured, and what they report when clicked.
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { makeGuess } from '../test/factories'
 import Keyboard from './Keyboard'
 
+// The on-screen key with this name, found by the name a screen reader would use.
 function key(name) {
   return screen.getByRole('button', { name: name })
 }

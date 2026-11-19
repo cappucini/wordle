@@ -1,3 +1,7 @@
+"""The HTTP routes for accounts: sign up, log in, log out, and "who am I".
+Each one calls app/user_service.py and sets or clears the session cookie.
+"""
+
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
@@ -41,7 +45,7 @@ def register(
         )
     except UsernameTaken:
         rate_limits.signup_refused(address)
-        raise
+        raise  # pass the same error on, so main.py still answers 409
     rate_limits.signup_succeeded(address)
 
     _end_replaced_session(request, session, token)
@@ -97,9 +101,11 @@ def _end_replaced_session(request: Request, session: Session, new_token: str) ->
     "/sessions/current", status_code=204, dependencies=[Depends(require_csrf)]
 )
 def logout(token: str = Depends(get_token), session: Session = Depends(get_session)):
+    """Signs out: ends the session on the server and removes the browser's cookie."""
     user_service.logout(session, token)
     # pages this sign-in had open stop being told about their games
     watchers.close_session(hash_token(token))
+    # 204 means "done, and there is nothing to send back"
     response = Response(status_code=204)
     clear_session_cookie(response)
     return response

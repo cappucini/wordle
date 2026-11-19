@@ -6,8 +6,11 @@ import * as api from '../api'
 import { CONFIG, ERICA, SAM, apiError, makeGame, makeGuess } from '../test/factories'
 import { useGame } from './useGame'
 
+// With no second argument, every function api.js exports becomes a fake that returns
+// undefined, and its constants keep their values. beforeEach gives the fakes their answers.
 vi.mock('../api')
 
+// the game the fake backend hands out, unless a test sets up another
 const NEW_GAME = makeGame({ id: 'game-1' })
 
 beforeEach(() => {
@@ -22,11 +25,14 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // some tests fake the clock; always put the real one back
   vi.useRealTimers()
 })
 
 // Renders the hook and waits until it has loaded the rules.
 async function renderGame() {
+  // renderHook runs the hook inside a throwaway component; result.current is always
+  // what the hook returned last
   const rendered = renderHook(() => useGame(ERICA))
   await waitFor(() => expect(rendered.result.current.config).not.toBeNull())
   return rendered.result
@@ -35,16 +41,20 @@ async function renderGame() {
 // Renders the hook and starts a new game, as clicking "New game" does.
 async function renderStartedGame() {
   const result = await renderGame()
+  // act() waits for the state changes that startGame causes before the test carries on
   await act(() => result.current.startGame())
   return result
 }
 
+// Sends keys to the hook one at a time, letting React redraw after each, as real typing
+// does. `...keys` gathers every argument after the first into an array.
 async function press(result, ...keys) {
   for (const key of keys) {
     await act(() => result.current.pressKey(key))
   }
 }
 
+// Types a word: one key press per letter.
 async function type(result, word) {
   await press(result, ...word.split(''))
 }
@@ -258,6 +268,7 @@ describe('useGame: typing', () => {
 
   it('ignores the physical keyboard while typing is paused, and keeps what was typed', async () => {
     api.createGame.mockResolvedValue(NEW_GAME)
+    // initialProps and rerender() let the test change the hook's arguments while it is in use
     const { result, rerender } = renderHook(({ paused }) => useGame(ERICA, { isTypingPaused: paused }), {
       initialProps: { paused: false },
     })
@@ -435,32 +446,39 @@ describe('useGame: submitting a guess', () => {
 // Stands in for the browser's WebSocket. The test plays the server: it decides when the
 // connection opens, when a notice arrives, and when (and with what code) it closes.
 class FakeSocket {
+  // every socket created, oldest first (emptied before each live-update test)
   static opened = []
 
+  // Records itself in FakeSocket.opened, so a test can find it with latestSocket().
   constructor(gameId) {
     this.gameId = gameId
     this.isClosed = false
     FakeSocket.opened.push(this)
   }
 
+  // What the page calls to hang up. It only notes that this happened.
   close() {
     this.isClosed = true
   }
 
   // --- what the "server" does ---
+  // The connection opens.
   async serverAccepts() {
     await act(async () => this.onopen())
   }
 
+  // A notice arrives: the game has changed.
   async serverSaysGameChanged() {
     await act(async () => this.onmessage({ data: '{"type":"game_updated"}' }))
   }
 
+  // The connection ends. 1006 is the code a browser reports when a connection just drops.
   async serverCloses(code = 1006) {
     await act(async () => this.onclose({ code: code }))
   }
 }
 
+// The connection opened most recently.
 function latestSocket() {
   return FakeSocket.opened.at(-1)
 }
@@ -471,6 +489,7 @@ describe("useGame: other players' guesses", () => {
 
   beforeEach(() => {
     FakeSocket.opened = []
+    // from here on, opening a connection makes a FakeSocket the test can drive
     api.openGameSocket.mockImplementation((gameId) => new FakeSocket(gameId))
   })
 
@@ -519,6 +538,7 @@ describe("useGame: other players' guesses", () => {
     api.createGame.mockResolvedValue(SHARED)
     const { result } = renderHook(() => useGame(ERICA))
     await act(async () => {
+      // advancing by 0 lets the answers already on their way (the rules, the games) arrive
       await vi.advanceTimersByTimeAsync(0)
     })
     await act(() => result.current.startGame())
@@ -639,6 +659,7 @@ describe("useGame: other players' guesses", () => {
       return result
     }
 
+    // Moves the fake clock forward, running any timers that come due, and lets React redraw.
     async function wait(milliseconds) {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(milliseconds)
@@ -796,6 +817,7 @@ describe("useGame: other players' guesses", () => {
       it('does not check while the tab is in the background', async () => {
         await renderSharedGameWithFakeClock()
         await latestSocket().serverCloses()
+        // document.hidden cannot be assigned to, so the test fakes the getter behind it
         const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
 
         await wait(30_000)
@@ -891,15 +913,19 @@ function serveGames(allGames) {
   })
 }
 
+// Builds `count` games with the ids old-1, old-2, and so on.
 function manyGames(count) {
   return Array.from({ length: count }, (_, index) => makeGame({ id: 'old-' + (index + 1) }))
 }
 
+// The ids of the games "Your games" is showing, in order.
 function listedIds(result) {
   return result.current.games.map((game) => game.id)
 }
 
 describe('useGame: "Your games" after Show more', () => {
+  // Renders the hook, waits for the first page of ten, then fetches a second page the way
+  // "Show more" does.
   async function renderWithTwoPagesShown(allGames) {
     serveGames(allGames)
     const result = await renderGame()
@@ -1143,6 +1169,8 @@ describe('useGame: whose game is in the address', () => {
   // to sign in must not be joined to the previous person's game by pressing Back.
   const NOT_A_PLAYER = "You're not a player in that game."
 
+  // Presses the browser's Back button and waits for the "popstate" event that follows.
+  // The test browser fires it a moment later, not straight away, hence the promise.
   async function goBack() {
     await act(async () => {
       window.history.back()
@@ -1156,6 +1184,7 @@ describe('useGame: whose game is in the address', () => {
 
     const result = await renderGame()
 
+    // ?. gives undefined instead of throwing while game is still null
     await waitFor(() => expect(result.current.game?.id).toBe('invite'))
     expect(api.joinGame).toHaveBeenCalledExactlyOnceWith('invite')
   })

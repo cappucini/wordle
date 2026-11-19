@@ -12,6 +12,8 @@ from starlette.websockets import WebSocketDisconnect
 
 from tests.support import API, put_session_cookie
 
+# The codes a WebSocket is closed with. 4000 to 4999 are free for an application to
+# use; these follow the HTTP statuses 401, 429, 403 and 404. 1008 is a standard code.
 NOT_AUTHENTICATED = 4401
 TOO_MANY_CONNECTIONS = 4429
 NOT_A_PLAYER = 4403
@@ -21,6 +23,8 @@ POLICY_VIOLATION = 1008
 
 def close_code(connect) -> int:
     """Tries to open and read from the socket; returns the code it was closed with."""
+    # the test client raises WebSocketDisconnect when the server closes the socket;
+    # pytest.raises catches it and keeps it in `refused.value`
     with pytest.raises(WebSocketDisconnect) as refused:
         with connect() as socket:
             socket.receive_json()
@@ -33,6 +37,7 @@ def close_code(connect) -> int:
 def test_visitor_who_is_not_signed_in_is_refused(player, client):
     game = player.create_game()
 
+    # passed as a lambda, so that close_code is the one that opens the connection
     code = close_code(lambda: client.websocket_connect(f"{API}/games/{game['id']}/ws"))
 
     assert code == NOT_AUTHENTICATED
@@ -61,6 +66,7 @@ def test_expired_session_is_refused(player, db):
     from app.db import AuthSessionRow
 
     game = player.create_game()
+    # make every sign-in in the table end a second ago
     db.query(AuthSessionRow).update(
         {AuthSessionRow.expires_at: datetime.now(timezone.utc) - timedelta(seconds=1)}
     )
@@ -90,6 +96,7 @@ def test_game_that_does_not_exist_is_refused(player):
 
 
 def test_game_id_that_is_not_a_uuid_is_refused(player):
+    # any refusal will do: this test does not pin down the close code for a malformed id
     with pytest.raises(WebSocketDisconnect):
         with player.watch("not-a-uuid") as socket:
             socket.receive_json()
@@ -159,6 +166,8 @@ def test_connection_is_closed_once_its_session_has_expired(player, other_player,
 def test_a_player_can_hold_ten_connections_and_the_eleventh_is_refused(player):
     game = player.create_game()
     open_sockets = []
+    # Ten sockets have to be open at the same time, so each `with` block is entered by
+    # hand with __enter__() and left in the `finally` with __exit__().
     try:
         for _ in range(10):
             socket = player.watch(game["id"])
@@ -253,6 +262,7 @@ def test_the_socket_never_carries_the_answer_or_any_game_data(player, other_play
         other_player.guess(game["id"], "slate")
         other_player.guess(game["id"], "crane")  # the winning guess
 
+        # read as raw text, to check exactly what was sent and not only how it parses
         messages = [socket.receive_text(), socket.receive_text()]
 
     for message in messages:

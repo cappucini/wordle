@@ -8,12 +8,14 @@ from tests.support import WRONG_5
 
 
 def ids(games: list[dict]) -> list[str]:
+    """The id of each game, in the order given."""
     return [game["id"] for game in games]
 
 
 def newest_first(games: list[dict]) -> list[str]:
     """The order the API promises: by created_at, then id, both descending."""
     return ids(
+        # sorting by a pair sorts by created_at, and uses the id only to break a tie
         sorted(games, key=lambda game: (game["created_at"], game["id"]), reverse=True)
     )
 
@@ -90,6 +92,7 @@ def test_list_reveals_the_answer_only_for_finished_games(player):
         player.guess(lost["id"], word)
     in_progress = player.create_game()
 
+    # index the listed games by id, so each one can be looked up below
     listed = {game["id"]: game for game in player.get("/games").json()["items"]}
 
     assert (listed[won["id"]]["status"], listed[won["id"]]["answer"]) == ("won", "crane")
@@ -109,6 +112,7 @@ def test_pages_cover_every_game_once_in_order(player):
     pages = all_pages(player, limit=2)
 
     assert [len(page) for page in pages] == [2, 2, 1]
+    # the double `for` flattens the pages into one list of games
     assert ids([game for page in pages for game in page]) == newest_first(games)
 
 
@@ -161,6 +165,7 @@ def test_games_created_at_the_same_instant_still_page_cleanly(player, db):
     games = [player.create_game() for _ in range(5)]
     # give every game the same created_at, so only the id can order them
     same_instant = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    # with no filter, this is one UPDATE that changes every row in the games table
     db.query(GameRow).update({GameRow.created_at: same_instant})
     db.commit()
 
@@ -180,6 +185,7 @@ def test_cursor_only_pages_through_your_own_games(player, other_player):
     response = player.get("/games", params={"cursor": their_cursor})
 
     assert response.status_code == 200
+    # <= between sets means "is a subset of": the page may be empty, but holds nothing else
     assert set(ids(response.json()["items"])) <= {mine["id"]}
 
 
@@ -214,6 +220,7 @@ def test_the_lookup_of_a_users_games_has_an_index(database):
     # the game, so without an index on user_id every lookup reads the whole table.
     from sqlalchemy import inspect
 
+    # inspect() asks the database itself which indexes the table has
     indexed = [index["column_names"] for index in inspect(database).get_indexes("game_players")]
 
     assert ["user_id"] in indexed
