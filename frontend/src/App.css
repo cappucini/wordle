@@ -306,16 +306,17 @@
 }
 
 .tile.correct {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--color-accent-ink);
+  background: var(--color-correct);
+  border-color: var(--color-correct);
+  color: var(--color-correct-ink);
 }
 
 /* "wrong position" is never shown by colour alone: the border is dashed and one corner is marked */
 .tile.present {
-  background: var(--color-present-fill);
-  border-color: var(--color-present);
+  background: var(--color-present);
+  border-color: var(--color-present-ink);
   border-style: dashed;
+  color: var(--color-present-ink);
 }
 
 .tile.present::after,
@@ -326,7 +327,7 @@
   right: 0;
   width: 26%;
   aspect-ratio: 1;
-  background: var(--color-present);
+  background: var(--color-present-ink);
   clip-path: polygon(0 0, 100% 0, 100% 100%);
 }
 
@@ -432,14 +433,16 @@
 }
 
 .key.correct {
-  background: var(--color-accent);
-  color: var(--color-accent-ink);
+  background: var(--color-correct);
+  border-color: var(--color-correct);
+  color: var(--color-correct-ink);
 }
 
 .key.present {
-  background: var(--color-present-fill);
-  border-color: var(--color-present);
+  background: var(--color-present);
+  border-color: var(--color-present-ink);
   border-style: dashed;
+  color: var(--color-present-ink);
 }
 
 .key.absent {

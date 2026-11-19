@@ -5,9 +5,10 @@
 /* the font is bundled with the app (width and weight axes), so no page load waits on another site */
 @import "@fontsource-variable/mona-sans/wdth.css";
 
-/* Theme: cyberpunk on a midnight-blue ground. Azure is the one signal (the primary button,
-   a correct letter); magenta marks a letter in the wrong position. Every colour, font and
-   size is defined here once; App.css only uses these names. */
+/* Theme: cyberpunk on a midnight-blue ground. Azure is the accent (the primary button, links).
+   Scored letters use the standard colours: green for the right place, yellow for the wrong
+   place, grey for not in the word. Every colour, font and size is defined here once;
+   App.css only uses these names. */
 
 :root {
   color-scheme: dark;
@@ -26,16 +27,20 @@
   --color-rule: oklch(29% 0.058 264);
   --color-rule-2: oklch(40% 0.06 262);
 
-  /* azure: the primary button, a correct letter, a won game */
+  /* azure: the primary button, links, a won game */
   --color-accent: oklch(83% 0.14 215);
   --color-accent-hover: oklch(89% 0.11 215);
   --color-accent-2: oklch(58% 0.1 236);
   --color-accent-ink: oklch(16% 0.05 264);
   --color-focus: oklch(86% 0.14 212);
 
-  /* magenta: a letter that is in the word but in the wrong position */
-  --color-present: oklch(74% 0.19 350);
-  --color-present-fill: oklch(30% 0.11 350);
+  /* green: a letter in the right position */
+  --color-correct: oklch(72% 0.17 148);
+  --color-correct-ink: oklch(16% 0.05 264);
+
+  /* yellow: a letter that is in the word but in the wrong position */
+  --color-present: oklch(85% 0.16 95);
+  --color-present-ink: oklch(16% 0.05 264);
 
   /* grey: a letter that is not in the word */
   --color-absent: oklch(47% 0.012 264);
