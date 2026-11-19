@@ -332,8 +332,8 @@ Run these from the repository root.
 | `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres. | 175 | 9 s |
 | `make test-security` | Security tests: sign-in and CSRF on every route, who may open the WebSocket, log-in and sign-up limits, hashed secrets, game access, the hidden answer, hostile input. | 221 | 19 s |
 | `make test-concurrency` | Race tests: joins, guesses and sign-ups sent at the same instant. | 8 | 5 s |
-| `make test-e2e` | End-to-end tests: headless Chromium driving the real frontend and backend through seven user journeys. | 7 | 20 s |
-| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 959 | 60 s |
+| `make test-e2e` | End-to-end tests: headless Chromium driving the real frontend and backend through seven user journeys, plus 14 layout checks at desktop, small-laptop and phone sizes. | 21 | 45 s |
+| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 973 | 85 s |
 
 The first run of a layer is slower, because Docker builds its image.
 
@@ -387,6 +387,12 @@ checked by the unit tests instead.
   so tests do not depend on each other or on their order.
 - End-to-end tests do not clean up. Each one creates users with unique names and its own games.
 
+### Layout checks
+
+`e2e/test_layout.py` holds the checks for things that only go wrong on a real screen, where the cause is in CSS and no other layer can see it: nothing sticking out sideways, the board staying on screen for a player with many games, the small boards in "Your games" being drawn in true squares, the rules panel opening where the player is looking, and keys staying wide enough to press. They measure the page at four window sizes (1280, 1100, 390 and 320 pixels wide).
+
+Each one guards a bug that was found by looking at the page. If you change the stylesheet and one fails, its message says what moved and by how much.
+
 ### When an end-to-end test fails
 
 For each browser the failed test had open, three files are saved in `e2e/artifacts/`
@@ -411,7 +417,8 @@ frontend/src/**/*.test.{js,jsx}   # beside the file each one tests
 e2e/
 ├── pages/          # page objects: every selector lives here
 ├── conftest.py     # browsers, unique users, saving screenshots on failure
-└── test_journeys.py
+├── test_journeys.py   # one test per user journey
+└── test_layout.py     # the page fits at desktop, laptop and phone sizes
 ```
 
 Test-only dependencies are in `backend/requirements-test.txt`, `e2e/requirements.txt` and

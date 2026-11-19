@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { blurAfterMouseClick } from '../focus'
 
 const STATUS_TEXT = {
@@ -8,7 +9,33 @@ const STATUS_TEXT = {
 
 // "Your games": every game the signed-in player is in, newest first.
 // Clicking one opens it. More are fetched a page at a time with "Show more".
+//
+// On a wide screen the list has a fixed height and scrolls inside itself (see App.css), so
+// a long list never pushes the board down the page.
 function GameList({ games, currentGameId, hasMore, onOpen, onLoadMore }) {
+  const listRef = useRef(null)
+
+  // Keep the open game in view inside the scrolling list, for example after going Back to
+  // an older game. Only the list itself is scrolled, never the page: on a phone the list
+  // sits below the board, and jumping the page down to it would take the board away.
+  useEffect(() => {
+    const list = listRef.current
+    if (list === null) {
+      return
+    }
+    const current = list.querySelector('[aria-current="true"]')
+    if (current === null) {
+      return
+    }
+    const listBox = list.getBoundingClientRect()
+    const itemBox = current.getBoundingClientRect()
+    if (itemBox.top < listBox.top) {
+      list.scrollTop -= listBox.top - itemBox.top
+    } else if (itemBox.bottom > listBox.bottom) {
+      list.scrollTop += itemBox.bottom - listBox.bottom
+    }
+  }, [currentGameId, games])
+
   if (games.length === 0) {
     return null
   }
@@ -16,7 +43,7 @@ function GameList({ games, currentGameId, hasMore, onOpen, onLoadMore }) {
   return (
     <section className="game-list" aria-label="Your games">
       <h2 className="game-list-heading">Your games</h2>
-      <ul>
+      <ul ref={listRef}>
         {games.map((game) => {
           const isCurrent = game.id === currentGameId
           const guessesUsed = game.guesses.length
@@ -39,6 +66,7 @@ function GameList({ games, currentGameId, hasMore, onOpen, onLoadMore }) {
                     so it can pick one square size that fits both ways. */}
                 <span
                   className="game-list-mini"
+                  data-testid="game-mini"
                   aria-hidden="true"
                   style={{ '--cols': game.word_length, '--rows': Math.max(guessesUsed, 1) }}
                 >

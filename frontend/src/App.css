@@ -327,6 +327,20 @@ h3 {
   list-style: none;
 }
 
+/* On a wide screen the list sits in the top row of panels, above the board. Left to grow,
+   ten games would push the board off the screen, so the list shows four and a half rows
+   and scrolls inside itself. The half row is deliberate: a row cut by the edge is what
+   says there is more to scroll to. (On a narrow screen the list comes after the board,
+   so it runs to its full length there.) */
+@media (min-width: 68.0625rem) {
+  .game-list ul {
+    max-height: calc(4.5 * 49px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+}
+
 .game-list li + li {
   border-top: var(--rule-hair) solid var(--color-rule);
 }
@@ -788,6 +802,29 @@ h3 {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-xl);
     padding-top: var(--space-xl);
+  }
+}
+
+/* Older phones (iOS 15 and earlier) do not know the container unit (cqi) that sizes the
+   board above, and would lose the tile size altogether. For them the row simply divides
+   whatever width it has into equal columns, and each tile is as tall as it is wide. */
+@supports not (width: 1cqi) {
+  @media (max-width: 68rem) {
+    .well-board,
+    .board {
+      width: 100%;
+    }
+
+    .row {
+      flex: 1;
+      grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
+    }
+
+    .tile {
+      height: auto;
+      aspect-ratio: 1;
+      font-size: 1.5rem;
+    }
   }
 }
 
