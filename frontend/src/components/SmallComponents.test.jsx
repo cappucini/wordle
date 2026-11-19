@@ -118,7 +118,80 @@ describe('GameList', () => {
 
     const [solo, shared] = screen.getAllByRole('listitem')
     expect(solo).not.toHaveTextContent('players')
-    expect(shared).toHaveTextContent('2 players')
+    expect(shared).toHaveTextContent('0 of 6 guesses, 2 players')
+  })
+
+  it('draws each game in miniature: a row of squares per guess, coloured by result', () => {
+    const game = makeGame({ id: 'a', guesses: [makeGuess('slate', 'AACAC'), makeGuess('react', 'PPCPA')] })
+
+    const { container } = render(
+      <GameList games={[game]} currentGameId={null} hasMore={false} onOpen={() => {}} onLoadMore={() => {}} />,
+    )
+
+    const rows = container.querySelectorAll('.game-list-mini > span')
+    expect(rows).toHaveLength(2)
+    expect([...rows[0].children].map((square) => square.className)).toEqual([
+      'absent', 'absent', 'correct', 'absent', 'correct',
+    ])
+    expect([...rows[1].children].map((square) => square.className)).toEqual([
+      'present', 'present', 'correct', 'present', 'absent',
+    ])
+  })
+
+  it('hides the miniature from screen readers, since the words beside it say the same', () => {
+    const { container } = render(
+      <GameList games={[makeGame({ guesses: [makeGuess('slate', 'AACAC')] })]} currentGameId={null} hasMore={false} onOpen={() => {}} onLoadMore={() => {}} />,
+    )
+
+    expect(container.querySelector('.game-list-mini')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('draws no squares for a game with no guesses yet', () => {
+    const { container } = render(
+      <GameList games={[makeGame()]} currentGameId={null} hasMore={false} onOpen={() => {}} onLoadMore={() => {}} />,
+    )
+
+    expect(container.querySelectorAll('.game-list-mini i')).toHaveLength(0)
+  })
+
+  it('tells the stylesheet how many columns and rows to fit, so the squares stay square', () => {
+    // App.css sizes every square from these two numbers: the largest whole size at which
+    // this many columns and rows fit the miniature's fixed box
+    const game = makeGame({
+      word_length: 8,
+      guesses: [makeGuess('notebook', 'APPPPAAA'), makeGuess('textbook', 'PPAAPPAA'), makeGuess('absolute', 'CCCCCCCC')],
+    })
+
+    const { container } = render(
+      <GameList games={[game]} currentGameId={null} hasMore={false} onOpen={() => {}} onLoadMore={() => {}} />,
+    )
+
+    const mini = container.querySelector('.game-list-mini')
+    expect(mini.style.getPropertyValue('--cols')).toBe('8')
+    expect(mini.style.getPropertyValue('--rows')).toBe('3')
+  })
+
+  it('still describes a sensible grid for a game with no guesses yet', () => {
+    const { container } = render(
+      <GameList games={[makeGame()]} currentGameId={null} hasMore={false} onOpen={() => {}} onLoadMore={() => {}} />,
+    )
+
+    const mini = container.querySelector('.game-list-mini')
+    expect(mini.style.getPropertyValue('--cols')).toBe('5')
+    expect(mini.style.getPropertyValue('--rows')).toBe('1') // never zero: the size is found by dividing by it
+  })
+
+  it('draws every guess of the longest possible game, nine rows of eight', () => {
+    // the miniature has a fixed size (see App.css), so the row stays the same height
+    const nineGuesses = Array.from({ length: 9 }, () => makeGuess('notebook', 'APPPPAAA'))
+    const game = makeGame({ id: 'long', word_length: 8, status: 'lost', guesses: nineGuesses })
+
+    const { container } = render(
+      <GameList games={[game]} currentGameId={null} hasMore={false} onOpen={() => {}} onLoadMore={() => {}} />,
+    )
+
+    expect(container.querySelectorAll('.game-list-mini > span')).toHaveLength(9)
+    expect(container.querySelectorAll('.game-list-mini i')).toHaveLength(72)
   })
 
   it('marks the game that is open', () => {
@@ -210,6 +283,82 @@ describe('NewGameControls', () => {
     expect(onStart).toHaveBeenCalledOnce()
     // otherwise the Enter that submits the first guess would start another game
     expect(button).not.toHaveFocus()
+  })
+})
+
+describe('NewGameControls: when there are too many lengths for a row of buttons', () => {
+  // twelve possible lengths, 4 to 15: more than the eight a row of buttons holds
+  const WIDE_CONFIG = { ...CONFIG, min_word_length: 4, max_word_length: 15 }
+
+  function renderStepper(props) {
+    const handlers = { onChangeLength: vi.fn(), onStart: vi.fn() }
+    render(<NewGameControls config={WIDE_CONFIG} wordLength={7} {...handlers} {...props} />)
+    return handlers
+  }
+
+  function picker() {
+    return within(screen.getByRole('group', { name: 'Word length' }))
+  }
+
+  it('still shows a row of buttons for exactly eight lengths', () => {
+    render(
+      <NewGameControls
+        config={{ ...CONFIG, min_word_length: 5, max_word_length: 12 }}
+        wordLength={5}
+        onChangeLength={() => {}}
+        onStart={() => {}}
+      />,
+    )
+
+    expect(picker().getAllByRole('button').map((button) => button.textContent)).toEqual([
+      '5', '6', '7', '8', '9', '10', '11', '12',
+    ])
+  })
+
+  it('switches to a stepper for nine or more: the chosen length between a minus and a plus', () => {
+    renderStepper()
+
+    expect(picker().getAllByRole('button')).toHaveLength(2)
+    expect(picker().getByRole('button', { name: 'Fewer letters' })).toBeInTheDocument()
+    expect(picker().getByRole('button', { name: 'More letters' })).toBeInTheDocument()
+    expect(picker().getByRole('status')).toHaveTextContent('7')
+  })
+
+  it('goes up one letter on plus and down one on minus', async () => {
+    const { onChangeLength } = renderStepper()
+
+    await userEvent.click(picker().getByRole('button', { name: 'More letters' }))
+    await userEvent.click(picker().getByRole('button', { name: 'Fewer letters' }))
+
+    expect(onChangeLength.mock.calls).toEqual([[8], [6]])
+  })
+
+  it('cannot go below the shortest length', async () => {
+    const { onChangeLength } = renderStepper({ wordLength: 4 })
+    const fewer = picker().getByRole('button', { name: 'Fewer letters' })
+
+    expect(fewer).toBeDisabled()
+    await userEvent.click(fewer)
+    expect(onChangeLength).not.toHaveBeenCalled()
+    expect(picker().getByRole('button', { name: 'More letters' })).toBeEnabled()
+  })
+
+  it('cannot go above the longest length', async () => {
+    const { onChangeLength } = renderStepper({ wordLength: 15 })
+    const more = picker().getByRole('button', { name: 'More letters' })
+
+    expect(more).toBeDisabled()
+    await userEvent.click(more)
+    expect(onChangeLength).not.toHaveBeenCalled()
+    expect(picker().getByRole('button', { name: 'Fewer letters' })).toBeEnabled()
+  })
+
+  it('says what the number counts, and still starts a game', async () => {
+    const { onStart } = renderStepper()
+
+    expect(picker().getByText('letters')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'New game' }))
+    expect(onStart).toHaveBeenCalledOnce()
   })
 })
 

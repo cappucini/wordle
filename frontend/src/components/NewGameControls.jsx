@@ -1,6 +1,11 @@
 import { blurAfterMouseClick } from '../focus'
 
-// The word-length buttons and the "New game" button.
+// A row of buttons shows every choice at once, which is best while there are few of them.
+// Past this many, the row would wrap and crowd the panel, so the picker becomes a stepper:
+// the chosen length between a minus and a plus, the same small size however many there are.
+const MOST_LENGTHS_AS_BUTTONS = 8
+
+// The word-length picker and the "New game" button.
 // The allowed lengths come from the backend's rules, not from a list written here.
 function NewGameControls({ config, wordLength, onChangeLength, onStart }) {
   // list all allowed options
@@ -8,25 +13,58 @@ function NewGameControls({ config, wordLength, onChangeLength, onStart }) {
   for (let length = config.min_word_length; length <= config.max_word_length; length++) {
     lengthOptions.push(length)
   }
-  // create a selectable button for every single possible length
+  const useStepper = lengthOptions.length > MOST_LENGTHS_AS_BUTTONS
+
   return (
     <section className="controls" aria-label="New game">
       <div className="length-picker" role="group" aria-label="Word length">
-        {lengthOptions.map((length) => (
-          <button
-            key={length}
-            className={length === wordLength ? 'length-option selected' : 'length-option'}
-            aria-pressed={length === wordLength}
-            onClick={(event) => {
-              onChangeLength(length)
-              // takes keyboard focus after button so pressing enter again
-              // goes to the game and doesn't press button again
-              blurAfterMouseClick(event)
-            }}
-          >
-            {length}
-          </button>
-        ))}
+        {/* few lengths: a selectable button for every one */}
+        {!useStepper &&
+          lengthOptions.map((length) => (
+            <button
+              key={length}
+              className={length === wordLength ? 'length-option selected' : 'length-option'}
+              aria-pressed={length === wordLength}
+              onClick={(event) => {
+                onChangeLength(length)
+                // takes keyboard focus after button so pressing enter again
+                // goes to the game and doesn't press button again
+                blurAfterMouseClick(event)
+              }}
+            >
+              {length}
+            </button>
+          ))}
+
+        {/* many lengths: one step down, the chosen length, one step up.
+            <output> is announced by screen readers each time the number changes. */}
+        {useStepper && (
+          <>
+            <button
+              className="length-option"
+              aria-label="Fewer letters"
+              disabled={wordLength <= config.min_word_length}
+              onClick={(event) => {
+                onChangeLength(wordLength - 1)
+                blurAfterMouseClick(event)
+              }}
+            >
+              −
+            </button>
+            <output className="length-value">{wordLength}</output>
+            <button
+              className="length-option"
+              aria-label="More letters"
+              disabled={wordLength >= config.max_word_length}
+              onClick={(event) => {
+                onChangeLength(wordLength + 1)
+                blurAfterMouseClick(event)
+              }}
+            >
+              +
+            </button>
+          </>
+        )}
         <span className="length-label">letters</span>
       </div>
 

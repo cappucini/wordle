@@ -5,6 +5,7 @@ by their text, the way a person finds them.
 """
 
 from pages.base import Page
+from pages.game_page import Box
 
 SIGN_IN_HEADING = "Sign in to play"
 CREATE_HEADING = "Create an account"
@@ -37,6 +38,29 @@ class AuthPage(Page):
 
     def has_invite_notice(self) -> bool:
         return self.has_text("You've been invited to a game.")
+
+    # ---- measuring the layout ----
+    # Used by test_layout.py. Positions are in the window's own coordinates.
+
+    def _box_of(self, element) -> Box:
+        rect = element.rect
+        scroll_x, scroll_y = self.driver.execute_script("return [window.scrollX, window.scrollY]")
+        left, top = rect["x"] - scroll_x, rect["y"] - scroll_y
+        return Box(left, top, left + rect["width"], top + rect["height"])
+
+    def form_box(self) -> Box:
+        return self._box_of(self.driver.find_element("css selector", "form"))
+
+    def submit_button_box(self) -> Box:
+        return self._box_of(self.button("Sign in"))
+
+    def explanation_box(self) -> Box:
+        return self._box_of(
+            self.driver.find_element("css selector", 'section[aria-label="How to play"]')
+        )
+
+    def window_height(self) -> int:
+        return self.driver.execute_script("return window.innerHeight")
 
     # ---- what a person does ----
 

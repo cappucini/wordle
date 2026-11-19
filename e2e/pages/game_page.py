@@ -197,3 +197,158 @@ class GamePage(Page):
         return [
             " ".join(item.text.split()) for item in sections[0].find_elements("tag name", "li")
         ]
+
+    # ---- the rules panel ----
+
+    def open_rules_with_shortcut(self) -> None:
+        ActionChains(self.driver).send_keys("?").perform()
+        self.wait_until(lambda: self.rules_panel_box() is not None, "the rules panel is open")
+
+    def close_rules(self) -> None:
+        ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
+        self.wait_until(lambda: self.rules_panel_box() is None, "the rules panel is closed")
+
+    def rules_panel_box(self) -> "Box | None":
+        return self._box('section[aria-label="How to play"]')
+
+    # ---- measuring the layout ----
+    # Used by test_layout.py. Positions are in the window's own coordinates: (0, 0) is the
+    # top-left corner of what is visible, so a box inside the window is on screen.
+
+    def _box(self, css: str) -> "Box | None":
+        rect = self.driver.execute_script(
+            "const e = document.querySelector(arguments[0]);"
+            "if (e === null) return null;"
+            "const r = e.getBoundingClientRect();"
+            "return [r.left, r.top, r.right, r.bottom];",
+            css,
+        )
+        return None if rect is None else Box(*rect)
+
+    def window_size(self) -> tuple[int, int]:
+        """The width and height of the visible page, without the browser's own frame."""
+        width, height = self.driver.execute_script(
+            "return [document.documentElement.clientWidth, window.innerHeight]"
+        )
+        return width, height
+
+    def sideways_overflow(self) -> int:
+        """How many pixels wider the page is than the window. 0 when nothing sticks out."""
+        return self.driver.execute_script(
+            "return Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth)"
+        )
+
+    def scroll_to_bottom(self) -> int:
+        """Scrolls as far down as the page goes, and returns how far that was."""
+        return self.driver.execute_script(
+            "window.scrollTo(0, document.documentElement.scrollHeight); return Math.round(window.scrollY)"
+        )
+
+    def board_box(self) -> "Box":
+        """From the first tile's top-left corner to the last tile's bottom-right."""
+        left, top, right, bottom = self.driver.execute_script(
+            "const tiles = [...document.querySelectorAll('[role=\"img\"]')];"
+            "const first = tiles[0].getBoundingClientRect(), last = tiles.at(-1).getBoundingClientRect();"
+            "return [first.left, first.top, last.right, last.bottom];"
+        )
+        return Box(left, top, right, bottom)
+
+    def key_box(self, name: str) -> "Box":
+        return self._box(f'button[aria-label="{name}"]')
+
+    def key_label_fits(self, name: str) -> bool:
+        """False when a key is too narrow for the word written on it."""
+        return self.driver.execute_script(
+            "const key = document.querySelector(arguments[0]); return key.scrollWidth <= key.clientWidth;",
+            f'button[aria-label="{name}"]',
+        )
+
+    def players_panel_box(self) -> "Box":
+        return self._box('section[aria-label="Players"]')
+
+    def copy_link_button_box(self) -> "Box":
+        return self._box('section[aria-label="Players"] button')
+
+    def make_copying_fail(self) -> None:
+        """Makes the browser refuse to copy, as it does when clipboard access is blocked."""
+        self.driver.execute_script(
+            "navigator.clipboard.writeText = () => Promise.reject(new Error('blocked'))"
+        )
+
+    def title_box(self) -> "Box":
+        """The title's letters, from the first to the last (not the full-width heading)."""
+        left, top, right, bottom = self.driver.execute_script(
+            "const letters = [...document.querySelectorAll('h1 span')];"
+            "const first = letters[0].getBoundingClientRect(), last = letters.at(-1).getBoundingClientRect();"
+            "return [first.left, first.top, last.right, last.bottom];"
+        )
+        return Box(left, top, right, bottom)
+
+    def signed_in_name_box(self) -> "Box":
+        return self._box("p > strong")
+
+    # ---- "Your games", measured ----
+
+    def open_listed_game(self, position: int) -> None:
+        """Opens a game from "Your games" by its place in the list (the newest is 0)."""
+        buttons = self._section("Your games")[0].find_elements("css selector", "li button")
+        buttons[position].click()
+
+    def games_list_scroll(self) -> dict:
+        """How the games list is scrolling: whether there is more than fits, and whether
+        the open game is inside the part that shows."""
+        return self.driver.execute_script(
+            "const list = document.querySelector('section[aria-label=\"Your games\"] ul');"
+            "const box = list.getBoundingClientRect();"
+            "const current = list.querySelector('[aria-current=\"true\"]');"
+            "const item = current === null ? null : current.getBoundingClientRect();"
+            "return {"
+            "  shows: Math.round(list.clientHeight), holds: Math.round(list.scrollHeight),"
+            "  open_game_in_view: item !== null && item.top >= box.top - 1 && item.bottom <= box.bottom + 1,"
+            "};"
+        )
+
+    def small_boards(self) -> list[dict]:
+        """For each game in "Your games": the height of its row, and how its small board
+        of squares is drawn."""
+        return self.driver.execute_script(
+            "return [...document.querySelectorAll('section[aria-label=\"Your games\"] li button')].map((row) => {"
+            "  const mini = row.querySelector('[data-testid=\"game-mini\"]');"
+            "  const box = mini.getBoundingClientRect();"
+            "  const squares = [...mini.querySelectorAll('i')].map((square) => square.getBoundingClientRect());"
+            "  return {"
+            "    row_height: row.getBoundingClientRect().height,"
+            "    squares: squares.length,"
+            "    widths: [...new Set(squares.map((s) => s.width))],"
+            "    heights: [...new Set(squares.map((s) => s.height))],"
+            "    all_inside: squares.every((s) => s.left >= box.left - 0.5 && s.right <= box.right + 0.5"
+            "      && s.top >= box.top - 0.5 && s.bottom <= box.bottom + 0.5),"
+            "  };"
+            "});"
+        )
+
+
+class Box:
+    """Where something is on screen: its four edges, in pixels from the window's top-left."""
+
+    def __init__(self, left: float, top: float, right: float, bottom: float):
+        self.left, self.top, self.right, self.bottom = left, top, right, bottom
+
+    @property
+    def width(self) -> float:
+        return self.right - self.left
+
+    @property
+    def height(self) -> float:
+        return self.bottom - self.top
+
+    def is_inside(self, other: "Box", tolerance: float = 1) -> bool:
+        return (
+            self.left >= other.left - tolerance
+            and self.right <= other.right + tolerance
+            and self.top >= other.top - tolerance
+            and self.bottom <= other.bottom + tolerance
+        )
+
+    def __repr__(self) -> str:
+        return f"Box(left={self.left:.0f}, top={self.top:.0f}, right={self.right:.0f}, bottom={self.bottom:.0f})"

@@ -2,6 +2,7 @@ import './App.css'
 import GameScreen from './GameScreen'
 import AuthForm from './components/AuthForm'
 import ErrorBoundary from './components/ErrorBoundary'
+import HowToPlay from './components/HowToPlay'
 import Title from './components/Title'
 import { clearGameIdFromUrl } from './gameUrl'
 import { useAuth } from './hooks/useAuth'
@@ -37,8 +38,13 @@ function App() {
       <ErrorBoundary>
         {isCheckingSignIn && <p className="message">Loading...</p>}
 
+        {/* signed out: how the game works on the left, the sign-in form on the right
+            (on a narrow screen the form is drawn first, see .welcome in App.css) */}
         {!isCheckingSignIn && user === null && (
-          <AuthForm onSignIn={signIn} onCreateAccount={createAccount} notice={notice} />
+          <div className="welcome">
+            <HowToPlay />
+            <AuthForm onSignIn={signIn} onCreateAccount={createAccount} notice={notice} />
+          </div>
         )}
 
         {/* key={user.id} gives each player a fresh game screen, so signing in as someone else
