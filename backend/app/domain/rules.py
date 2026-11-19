@@ -14,7 +14,20 @@ MAX_USERNAME_LENGTH = 20
 USERNAME_PATTERN = r"^[a-z0-9_]+$"  # lowercase letters, digits and underscores
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
-SESSION_DAYS = 7  # how long a sign-in stays valid
+SESSION_DAYS = 7  # how long a sign-in stays valid after it was last extended
+# A sign-in in use is extended to the full SESSION_DAYS again, but at most this often,
+# so an active player stays signed in without every request writing to the database.
+SESSION_RENEW_AFTER_DAYS = 1
+
+# Limits on log-in and sign-up attempts (see app/api/v1/rate_limits.py)
+RATE_LIMIT_WINDOW_SECONDS = 5 * 60  # attempts are counted over the last five minutes
+MAX_FAILED_LOGINS_PER_USERNAME = 10  # wrong passwords for one account
+MAX_FAILED_LOGINS_PER_ADDRESS = 30  # wrong passwords from one network address, any account
+MAX_SIGNUPS_PER_ADDRESS = 20  # accounts created from one network address
+MAX_REFUSED_SIGNUPS_PER_ADDRESS = 30  # sign-ups refused because the username was taken
+
+# Live updates (see app/live.py)
+MAX_LIVE_CONNECTIONS_PER_USER = 10  # WebSockets one player may hold open: about ten tabs
 
 
 class LetterResult(str, Enum):

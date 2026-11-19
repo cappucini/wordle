@@ -27,7 +27,10 @@ function GameList({ games, currentGameId, hasMore, onOpen, onLoadMore }) {
                 aria-current={isCurrent ? 'true' : undefined}
                 onClick={(event) => {
                   onOpen(game.id)
-                  blurAfterMouseClick(event)
+                  // Always give up focus, even when opened from the keyboard: the next thing
+                  // the player does is type a word and press Enter, and with focus still
+                  // here that Enter would press this button again instead of guessing.
+                  event.currentTarget.blur()
                 }}
               >
                 <span className="game-list-main">{game.word_length} letters</span>

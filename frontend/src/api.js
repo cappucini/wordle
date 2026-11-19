@@ -47,7 +47,7 @@ async function readJson(response) {
 async function sendRequest(method, path, data) {
   const options = {
     method: method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {},
     // send the session cookie along, and accept one when signing in
     credentials: 'include',
   }
@@ -57,7 +57,8 @@ async function sendRequest(method, path, data) {
   }
   // If .data argument is not there, on't 
   if (data !== undefined) {
-    // convert to JSON
+    // convert to JSON, and say so; a request with no body has nothing to label
+    options.headers['Content-Type'] = 'application/json'
     options.body = JSON.stringify(data)
   }
 
@@ -117,8 +118,12 @@ export function submitGuess(gameId, word) {
 
 // One page of the signed-in user's games, newest first.
 // Pass the next_cursor from the previous page to get the following one.
-export function listGames(cursor) {
-  let path = '/games?limit=10'
+// `limit` is how many games to return; the backend allows up to MAX_GAMES_PAGE_SIZE.
+export const GAMES_PAGE_SIZE = 10
+export const MAX_GAMES_PAGE_SIZE = 100
+
+export function listGames(cursor, limit = GAMES_PAGE_SIZE) {
+  let path = '/games?limit=' + limit
   if (cursor) {
     path += '&cursor=' + encodeURIComponent(cursor)
   }
@@ -140,6 +145,8 @@ export function joinGame(gameId) {
 export const SOCKET_CLOSED_NOT_AUTHENTICATED = 4401
 export const SOCKET_CLOSED_NOT_A_PLAYER = 4403
 export const SOCKET_CLOSED_GAME_NOT_FOUND = 4404
+// this player already has as many of these connections open as one player may (about ten tabs)
+export const SOCKET_CLOSED_TOO_MANY_CONNECTIONS = 4429
 
 export function openGameSocket(gameId) {
   return new WebSocket(SOCKET_URL + '/games/' + gameId + '/ws')

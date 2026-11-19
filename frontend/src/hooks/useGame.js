@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  GAMES_PAGE_SIZE,
+  MAX_GAMES_PAGE_SIZE,
   SOCKET_CLOSED_GAME_NOT_FOUND,
   SOCKET_CLOSED_NOT_A_PLAYER,
   SOCKET_CLOSED_NOT_AUTHENTICATED,
+  SOCKET_CLOSED_TOO_MANY_CONNECTIONS,
   createGame,
   getConfig,
   getGame,
@@ -12,20 +15,32 @@ import {
   submitGuess,
 } from '../api'
 import { errorText } from '../errorText'
-import { clearGameIdFromUrl, getGameIdFromUrl, setGameIdInUrl } from '../gameUrl'
+import {
+  clearGameIdFromUrl,
+  getGameIdFromUrl,
+  getUserWhoOpenedGameInUrl,
+  markGameInUrlAsOpenedBy,
+  setGameIdInUrl,
+} from '../gameUrl'
 
 // If the connection that reports other players' guesses drops, the page reconnects:
 // after 1 second, then 2, 4, 8, and at most every 10 seconds after that.
 const FIRST_RECONNECT_DELAY_MS = 1000
 const LONGEST_RECONNECT_DELAY_MS = 10000
 
+// While there is no connection (it dropped, or the network doesn't allow WebSockets at all),
+// the page falls back to asking the server this often, so a shared board still updates.
+const NO_CONNECTION_CHECK_MS = 5000
+
 // close codes after which reconnecting is pointless: the backend refused on purpose
-const REFUSED = [SOCKET_CLOSED_NOT_AUTHENTICATED, SOCKET_CLOSED_NOT_A_PLAYER, SOCKET_CLOSED_GAME_NOT_FOUND]
+const REFUSED = [SOCKET_CLOSED_NOT_A_PLAYER, SOCKET_CLOSED_GAME_NOT_FOUND]
 
 // Holds everything the game screen needs to know, and the actions that change it.
 // Components only display what this returns; they never call the API themselves.
 // This is called from GameScreen.jsx, which is only shown once a player has signed in.
-export function useGame() {
+// `user` is the signed-in player ({ id, username }).
+export function useGame(user) {
+  const userId = user.id
   // Every call useState() dedicates a piece of state with a given starting value.
   // They belong to the page's working memory, and will be wiped on refresh.
   const [config, setConfig] = useState(null) // the rules, from the backend
@@ -38,7 +53,9 @@ export function useGame() {
   // arrive in a quick burst would each see the same out-of-date word and overwrite each other,
   // and a second Enter could slip through before "submitting" had taken effect.
   const typedWordRef = useRef('')
-  const isSubmitting = useRef(false)
+  // the ID of the game a guess is being sent for, or null when none is. It names the game
+  // so that a guess still on its way for one game doesn't lock the keyboard of another.
+  const submittingForGame = useRef(null)
 
   // The one way to change the typed word: updates the ref (for the key handler) and the
   // state (for the screen) together, so they can never disagree.
@@ -74,11 +91,21 @@ export function useGame() {
       .catch((error) => setMessage(errorText(error)))
   }, [])
 
-  // Fetch the first page of the player's games. Called on load and whenever the list may
+  // How many games "Your games" is showing, and whether a "Show more" request is under way.
+  // Refs, because the functions below need the current values the moment they run.
+  const shownGamesCount = useRef(0)
+  const isLoadingMoreGames = useRef(false)
+
+  // Fetch the player's games again from the top. Called on load and whenever the list may
   // have changed (a game was started, joined or finished).
+  // It asks for as many games as are already showing, in whole pages, so a player who has
+  // clicked "Show more" keeps those extra games instead of dropping back to the first page.
   const refreshGames = useCallback(() => {
-    listGames()
+    const pagesShown = Math.max(1, Math.ceil(shownGamesCount.current / GAMES_PAGE_SIZE))
+    const limit = Math.min(pagesShown * GAMES_PAGE_SIZE, MAX_GAMES_PAGE_SIZE)
+    listGames(null, limit)
       .then((page) => {
+        shownGamesCount.current = page.items.length
         setGames(page.items)
         setNextGamesCursor(page.next_cursor)
       })
@@ -89,20 +116,38 @@ export function useGame() {
 
   // Fetch the next page and add it to the end of the list.
   function loadMoreGames() {
-    if (nextGamesCursor === null) {
-      return
+    if (nextGamesCursor === null || isLoadingMoreGames.current) {
+      return // nothing more to fetch, or the next page is already on its way (a double-click)
     }
+    isLoadingMoreGames.current = true
     listGames(nextGamesCursor)
       .then((page) => {
-        setGames((current) => current.concat(page.items))
+        setGames((current) => {
+          // The list may have been refreshed while this page was on its way, and then some
+          // of these games are in it already. Only add the ones that aren't.
+          const shownIds = new Set(current.map((game) => game.id))
+          const merged = current.concat(page.items.filter((game) => !shownIds.has(game.id)))
+          shownGamesCount.current = merged.length
+          return merged
+        })
         setNextGamesCursor(page.next_cursor)
       })
       .catch((error) => setMessage(errorText(error)))
+      .finally(() => {
+        isLoadingMoreGames.current = false
+      })
   }
 
   // Show the game whose ID is in the address bar.
-  // It joins the game first: opening a link someone shared is how a player joins their game.
-  // Joining a game you are already in changes nothing, so this is also how your own games load.
+  //
+  // Normally it joins the game first: opening a link someone shared is how a player joins
+  // their game, and joining a game you are already in changes nothing, so this is also how
+  // your own games load.
+  //
+  // The exception is an address that a *different* player opened on this browser (reached
+  // with Back, or left in the address bar when their sign-in ended). That is not an
+  // invitation, so the game is only read: it shows if this player happens to be in it too,
+  // and otherwise they are told they are not a player. Nobody is joined by pressing Back.
   const showGameFromUrl = useCallback(() => {
     const gameId = getGameIdFromUrl()
     latestLoad.current += 1
@@ -116,12 +161,16 @@ export function useGame() {
       setIsLoadingGame(false)
       return
     }
+    const openedBy = getUserWhoOpenedGameInUrl()
+    const wasOpenedByAnotherPlayer = openedBy !== null && openedBy !== userId
     setIsLoadingGame(true)
-    joinGame(gameId)
+    const load = wasOpenedByAnotherPlayer ? getGame(gameId) : joinGame(gameId)
+    load
       .then((loadedGame) => {
         if (thisLoad !== latestLoad.current) {
           return // a newer load has started since; ignore this stale answer
         }
+        markGameInUrlAsOpenedBy(userId) // this player is in the game: the address is theirs now
         setGame(loadedGame)
         setMessage('')
         setIsLoadingGame(false)
@@ -137,7 +186,7 @@ export function useGame() {
         setMessage(errorText(error))
         setIsLoadingGame(false)
       })
-  }, [refreshGames, changeTypedWord])
+  }, [refreshGames, changeTypedWord, userId])
 
   // Run it on first load, and again whenever the player uses the browser's Back or Forward
   // buttons to move between games.
@@ -153,7 +202,7 @@ export function useGame() {
     if (gameId === getGameIdFromUrl()) {
       return // already showing it; don't add a duplicate entry to the browser's history
     }
-    setGameIdInUrl(gameId)
+    setGameIdInUrl(gameId, userId)
     showGameFromUrl()
   }
 
@@ -168,6 +217,7 @@ export function useGame() {
     }
     let socket = null
     let reconnectTimer = null
+    let checkTimer = null // set while the fallback timer is running
     let failedAttempts = 0
     let isFinished = false // set when this game is no longer on screen, or has ended
 
@@ -198,10 +248,35 @@ export function useGame() {
         })
     }
 
+    // The fallback for when there is no connection: ask on a timer instead of being told.
+    function startCheckingOnATimer() {
+      if (checkTimer === null) {
+        checkTimer = setInterval(() => {
+          if (!document.hidden) {
+            fetchLatest() // not from a tab nobody is looking at
+          }
+        }, NO_CONNECTION_CHECK_MS)
+      }
+    }
+
+    function stopCheckingOnATimer() {
+      clearInterval(checkTimer)
+      checkTimer = null
+    }
+
     function connect() {
-      socket = openGameSocket(gameId)
+      try {
+        socket = openGameSocket(gameId)
+      } catch {
+        // The browser refused to even try (for example an insecure ws:// address on an
+        // https page). Trying again would be refused the same way, so check on a timer.
+        socket = null
+        startCheckingOnATimer()
+        return
+      }
       socket.onopen = () => {
         failedAttempts = 0
+        stopCheckingOnATimer() // the server tells us about changes again
         // anything that happened while there was no connection was not announced, so look now
         fetchLatest()
       }
@@ -211,12 +286,19 @@ export function useGame() {
           return // we closed it ourselves
         }
         if (REFUSED.includes(event.code)) {
-          if (event.code === SOCKET_CLOSED_NOT_AUTHENTICATED) {
-            // The sign-in has ended. This request gets the same answer, and api.js then
-            // takes the page back to the sign-in form.
-            fetchLatest()
-          }
           return
+        }
+        if (event.code === SOCKET_CLOSED_NOT_AUTHENTICATED) {
+          // The server believes the sign-in has ended. Ask straight away: if it has, this
+          // request gets a 401 and api.js takes the page back to the sign-in form (which
+          // removes this screen and its timers). If the sign-in was extended since the
+          // connection opened, the request succeeds and we simply reconnect below.
+          fetchLatest()
+        }
+        // No connection from here on, so keep the board up to date the slow way.
+        startCheckingOnATimer()
+        if (event.code === SOCKET_CLOSED_TOO_MANY_CONNECTIONS) {
+          return // too many tabs open; asking for another connection would be refused again
         }
         // dropped (the server restarted, or the network blinked): try again, a little later each time
         const delay = Math.min(FIRST_RECONNECT_DELAY_MS * 2 ** failedAttempts, LONGEST_RECONNECT_DELAY_MS)
@@ -230,7 +312,10 @@ export function useGame() {
     return () => {
       isFinished = true
       clearTimeout(reconnectTimer)
-      socket.close()
+      stopCheckingOnATimer()
+      if (socket !== null) {
+        socket.close()
+      }
     }
   }, [gameId, isInProgress, refreshGames])
 
@@ -239,15 +324,29 @@ export function useGame() {
       return // a new game is already being created; ignore the extra click
     }
     isStartingGame.current = true
+    // Starting a game counts as a load. A game that was still loading from a link is now
+    // out of date, and its answer will be ignored when it arrives.
+    latestLoad.current += 1
+    const thisLoad = latestLoad.current
     try {
       const newGame = await createGame(wordLength)
-      setGameIdInUrl(newGame.id)
+      if (thisLoad !== latestLoad.current) {
+        // The player opened another game while this one was being created. Leave that game
+        // on screen; the new one is saved and appears in "Your games".
+        refreshGames()
+        return
+      }
+      setGameIdInUrl(newGame.id, userId)
       setGame(newGame)
+      setIsLoadingGame(false)
       changeTypedWord('')
       setMessage('')
       setRowHasProblem(false)
       refreshGames()
     } catch (error) {
+      if (thisLoad !== latestLoad.current) {
+        return // about a game the player has already moved on from
+      }
       setMessage(errorText(error))
       setRowHasProblem(false)
     } finally {
@@ -262,8 +361,10 @@ export function useGame() {
       // Ignore key when:
       // - no game has been started yet
       // - game is already won or lost
-      // - we're in the process already of submitting guess to server
-      if (game === null || game.status !== 'in_progress' || isSubmitting.current) {
+      // - a guess for this game is already on its way to the server
+      // - another game is loading: the board still shows the game being left, and a word
+      //   typed now would be guessed in that one
+      if (game === null || game.status !== 'in_progress' || submittingForGame.current === game.id || isLoadingGame) {
         return
       }
       // read the word from the ref, so this is right even if several keys arrive before a redraw
@@ -277,23 +378,38 @@ export function useGame() {
           setRowHasProblem(true)
           return
         }
-        isSubmitting.current = true
+        submittingForGame.current = game.id
+        // Each step below waits for the server, and the player may open a different game
+        // while it does. The address bar always names the game the player chose last, so
+        // after each wait: if it no longer names this game, leave the screen alone.
+        const isStillOpen = () => getGameIdFromUrl() === game.id
         try {
           // Step 1: send the guess.
           try {
             await submitGuess(game.id, typedWord)
           } catch (error) {
+            if (!isStillOpen()) {
+              return // the message would appear on a different game
+            }
             setMessage(errorText(error))
             if (error.code === 'GAME_OVER') {
               // The game was finished somewhere else (another tab, or another player).
               // Reload it so this board shows the final result instead of staying stale.
               changeTypedWord('')
               setRowHasProblem(false)
-              setGame(await getGame(game.id))
+              const finishedGame = await getGame(game.id)
+              if (isStillOpen()) {
+                setGame(finishedGame)
+              }
             } else {
               // an invalid word lands here; the typed letters stay so the player can fix them
               setRowHasProblem(error.code === 'INVALID_GUESS')
             }
+            return
+          }
+
+          if (!isStillOpen()) {
+            refreshGames() // the guess is saved; only "Your games" needs to know
             return
           }
 
@@ -304,13 +420,20 @@ export function useGame() {
           setRowHasProblem(false)
 
           // Step 3: the server owns the game, so reload it rather than updating our own copy.
-          setGame(await getGame(game.id))
+          const reloadedGame = await getGame(game.id)
+          if (isStillOpen()) {
+            setGame(reloadedGame)
+          }
           refreshGames() // keep the guess count and status in "Your games" up to date
         } catch (error) {
           // only a failed reload reaches here: the guess (if any) is safe on the server
-          setMessage(errorText(error))
+          if (isStillOpen()) {
+            setMessage(errorText(error))
+          }
         } finally {
-          isSubmitting.current = false
+          if (submittingForGame.current === game.id) {
+            submittingForGame.current = null
+          }
         }
       } else if (key === 'Backspace') {
         changeTypedWord(typedWord.slice(0, -1))
@@ -322,7 +445,7 @@ export function useGame() {
         setRowHasProblem(false)
       }
     },
-    [game, refreshGames, changeTypedWord],
+    [game, isLoadingGame, refreshGames, changeTypedWord],
   )
 
   // Listen to the physical keyboard.

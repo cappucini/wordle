@@ -98,6 +98,12 @@ describe('api: what each call sends', () => {
     expect(lastRequest()).toMatchObject({ url: API + '/games?limit=10', method: 'GET' })
   })
 
+  it('can ask for more than ten games at once, to refresh a list that has been expanded', async () => {
+    await api.listGames(null, 30)
+
+    expect(lastRequest().url).toBe(API + '/games?limit=30')
+  })
+
   it('lists the next page with the cursor made safe for a URL', async () => {
     await api.listGames('abc+/=')
 
@@ -126,6 +132,18 @@ describe('api: what each call sends', () => {
       method: 'POST',
       body: { username: 'erica', password: 'correct horse' },
     })
+  })
+
+  it('labels the body as JSON only when it sends one', async () => {
+    await api.getConfig()
+    await api.joinGame('game-1')
+    await api.createGame(5)
+
+    // a GET or a POST with nothing in it has no body to describe; leaving the header off
+    // also spares the browser an extra "may I?" request before every read
+    expect(request(0).headers).not.toHaveProperty('Content-Type')
+    expect(request(1).headers).not.toHaveProperty('Content-Type')
+    expect(request(2).headers['Content-Type']).toBe('application/json')
   })
 
   it('always sends the session cookie along', async () => {
@@ -158,6 +176,7 @@ describe('api: the live-update connection', () => {
     expect(api.SOCKET_CLOSED_NOT_AUTHENTICATED).toBe(4401)
     expect(api.SOCKET_CLOSED_NOT_A_PLAYER).toBe(4403)
     expect(api.SOCKET_CLOSED_GAME_NOT_FOUND).toBe(4404)
+    expect(api.SOCKET_CLOSED_TOO_MANY_CONNECTIONS).toBe(4429)
   })
 })
 

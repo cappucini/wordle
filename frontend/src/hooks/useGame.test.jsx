@@ -27,7 +27,7 @@ afterEach(() => {
 
 // Renders the hook and waits until it has loaded the rules.
 async function renderGame() {
-  const rendered = renderHook(() => useGame())
+  const rendered = renderHook(() => useGame(ERICA))
   await waitFor(() => expect(rendered.result.current.config).not.toBeNull())
   return rendered.result
 }
@@ -63,7 +63,7 @@ describe('useGame: loading', () => {
   it('shows a message when the rules cannot be loaded', async () => {
     api.getConfig.mockRejectedValue(apiError('NETWORK_ERROR'))
 
-    const { result } = renderHook(() => useGame())
+    const { result } = renderHook(() => useGame(ERICA))
 
     await waitFor(() => expect(result.current.message).toBe("Can't reach the game server. Is it running?"))
     expect(result.current.config).toBeNull()
@@ -106,6 +106,7 @@ describe('useGame: opening a game from the address', () => {
   it.each([
     ['GAME_FULL', 'That game already has the maximum number of players.'],
     ['GAME_NOT_FOUND', "That game doesn't exist. Start a new one?"],
+    ['GAME_OVER', 'This game has already finished.'],
     ['INVALID_REQUEST', "That link or request isn't valid. Start a new game?"],
   ])('explains a %s link and takes it out of the address', async (code, text) => {
     window.history.replaceState({}, '', '/?game=some-game')
@@ -209,6 +210,28 @@ describe('useGame: typing', () => {
     })
 
     expect(result.current.typedWord).toBe('crane')
+  })
+
+  it('ignores keys while another game is loading, so a guess cannot land in the game being left', async () => {
+    const result = await renderStartedGame()
+    api.joinGame.mockReturnValue(new Promise(() => {})) // the other game is slow to arrive
+
+    await act(async () => result.current.openGame('game-2'))
+    await type(result, 'crane')
+    await press(result, 'Enter')
+
+    expect(result.current.typedWord).toBe('')
+    expect(api.submitGuess).not.toHaveBeenCalled()
+  })
+
+  it('takes keys again once the other game has loaded', async () => {
+    const result = await renderStartedGame()
+    api.joinGame.mockResolvedValue(makeGame({ id: 'game-2' }))
+
+    await act(async () => result.current.openGame('game-2'))
+    await type(result, 'cr')
+
+    expect(result.current.typedWord).toBe('cr')
   })
 
   it('ignores keys before a game has started', async () => {
@@ -470,7 +493,7 @@ describe("useGame: other players' guesses", () => {
   it('asks for nothing while the server is silent', async () => {
     vi.useFakeTimers()
     api.createGame.mockResolvedValue(SHARED)
-    const { result } = renderHook(() => useGame())
+    const { result } = renderHook(() => useGame(ERICA))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
@@ -555,7 +578,7 @@ describe("useGame: other players' guesses", () => {
 
   it('closes the connection when the page goes away', async () => {
     api.createGame.mockResolvedValue(SHARED)
-    const rendered = renderHook(() => useGame())
+    const rendered = renderHook(() => useGame(ERICA))
     await waitFor(() => expect(rendered.result.current.config).not.toBeNull())
     await act(() => rendered.result.current.startGame())
     const socket = latestSocket()
@@ -582,7 +605,7 @@ describe("useGame: other players' guesses", () => {
     async function renderSharedGameWithFakeClock() {
       vi.useFakeTimers()
       api.createGame.mockResolvedValue(SHARED)
-      const { result } = renderHook(() => useGame())
+      const { result } = renderHook(() => useGame(ERICA))
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0) // let the rules and the games list arrive
       })
@@ -656,7 +679,7 @@ describe("useGame: other players' guesses", () => {
     it('does not reconnect after the page has gone away', async () => {
       vi.useFakeTimers()
       api.createGame.mockResolvedValue(SHARED)
-      const rendered = renderHook(() => useGame())
+      const rendered = renderHook(() => useGame(ERICA))
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0)
       })
@@ -667,6 +690,129 @@ describe("useGame: other players' guesses", () => {
       await wait(20_000)
 
       expect(FakeSocket.opened).toHaveLength(1)
+    })
+
+    describe('and stays down', () => {
+      // WebSockets blocked by the network, the server restarting, or too many tabs open:
+      // the board must still pick up other players' guesses, just more slowly.
+
+      it('checks for changes every five seconds while there is no connection', async () => {
+        const result = await renderSharedGameWithFakeClock()
+        await latestSocket().serverCloses()
+        api.getGame.mockResolvedValue(WITH_SAMS_GUESS)
+
+        await wait(4999)
+        expect(api.getGame).not.toHaveBeenCalled()
+        await wait(1)
+
+        expect(api.getGame).toHaveBeenCalledWith('game-1')
+        expect(result.current.game.guesses).toHaveLength(1)
+        await wait(5000)
+        expect(api.getGame).toHaveBeenCalledTimes(2)
+      })
+
+      it('goes quiet again once the connection is back', async () => {
+        await renderSharedGameWithFakeClock()
+        await latestSocket().serverCloses()
+        await wait(1000) // reconnects
+        await latestSocket().serverAccepts() // one catch-up check on opening
+        api.getGame.mockClear()
+
+        await wait(60_000)
+
+        expect(api.getGame).not.toHaveBeenCalled()
+      })
+
+      it('checks every five seconds when a connection can never be made at all', async () => {
+        vi.useFakeTimers()
+        api.createGame.mockResolvedValue(SHARED)
+        const { result } = renderHook(() => useGame(ERICA))
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0)
+        })
+        await act(() => result.current.startGame())
+        api.getGame.mockResolvedValue(WITH_SAMS_GUESS)
+
+        await latestSocket().serverCloses() // refused by the network before it ever opened
+        await wait(5000)
+
+        expect(result.current.game.guesses).toHaveLength(1)
+      })
+
+      it('stops checking when the game is over', async () => {
+        const result = await renderSharedGameWithFakeClock()
+        await latestSocket().serverCloses()
+        api.getGame.mockResolvedValue({ ...SHARED, status: 'lost', answer: 'crane' })
+        await wait(5000)
+        expect(result.current.game.status).toBe('lost')
+        api.getGame.mockClear()
+
+        await wait(60_000)
+
+        expect(api.getGame).not.toHaveBeenCalled()
+      })
+
+      it('stops checking when the page goes away', async () => {
+        vi.useFakeTimers()
+        api.createGame.mockResolvedValue(SHARED)
+        const rendered = renderHook(() => useGame(ERICA))
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0)
+        })
+        await act(() => rendered.result.current.startGame())
+        await latestSocket().serverCloses()
+        api.getGame.mockClear()
+
+        rendered.unmount()
+        await wait(60_000)
+
+        expect(api.getGame).not.toHaveBeenCalled()
+      })
+
+      it('does not check while the tab is in the background', async () => {
+        await renderSharedGameWithFakeClock()
+        await latestSocket().serverCloses()
+        const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+
+        await wait(30_000)
+        expect(api.getGame).not.toHaveBeenCalled()
+
+        hidden.mockReturnValue(false) // the player comes back to the tab
+        await wait(5000)
+        expect(api.getGame).toHaveBeenCalled()
+      })
+
+      it('survives the browser refusing to create a connection at all', async () => {
+        // browsers throw for an insecure ws:// address on an https page, for example
+        vi.useFakeTimers()
+        api.createGame.mockResolvedValue(SHARED)
+        api.openGameSocket.mockImplementation(() => {
+          throw new DOMException('The operation is insecure.', 'SecurityError')
+        })
+        const { result } = renderHook(() => useGame(ERICA))
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0)
+        })
+
+        await act(() => result.current.startGame()) // must not crash the page
+        api.getGame.mockResolvedValue(WITH_SAMS_GUESS)
+        await wait(5000)
+
+        // the game is playable, and the board still updates by checking on a timer
+        expect(result.current.game.guesses).toHaveLength(1)
+        expect(api.openGameSocket).toHaveBeenCalledOnce() // no point asking the browser again
+      })
+
+      it('checks every five seconds, without reconnecting, when the player has too many tabs open', async () => {
+        const result = await renderSharedGameWithFakeClock()
+        api.getGame.mockResolvedValue(WITH_SAMS_GUESS)
+
+        await latestSocket().serverCloses(4429)
+        await wait(30_000)
+
+        expect(FakeSocket.opened).toHaveLength(1) // asking again would only be refused again
+        expect(result.current.game.guesses).toHaveLength(1)
+      })
     })
 
     it.each([
@@ -682,16 +828,413 @@ describe("useGame: other players' guesses", () => {
       expect(api.getGame).not.toHaveBeenCalled()
     })
 
-    it('does not retry when the sign-in has ended, and lets the page find that out', async () => {
+    it('checks at once when the server says the sign-in has ended', async () => {
       await renderSharedGameWithFakeClock()
       api.getGame.mockRejectedValue(apiError('NOT_AUTHENTICATED'))
 
       await latestSocket().serverCloses(4401)
-      await wait(60_000)
 
-      expect(FakeSocket.opened).toHaveLength(1)
-      // this request is what makes api.js send the player back to the sign-in form
+      // If the sign-in really has ended, this request gets a 401 and api.js sends the
+      // player back to the sign-in form, which takes this whole screen away.
       expect(api.getGame).toHaveBeenCalledExactlyOnceWith('game-1')
     })
+
+    it('reconnects after a 4401 if the sign-in turns out to be fine', async () => {
+      // the server closes a connection at the expiry time it knew when the connection
+      // opened; a sign-in that was extended since then is still good
+      const result = await renderSharedGameWithFakeClock()
+      api.getGame.mockResolvedValue(WITH_SAMS_GUESS)
+
+      await latestSocket().serverCloses(4401)
+      await wait(1000)
+
+      expect(FakeSocket.opened).toHaveLength(2)
+      expect(result.current.game.guesses).toHaveLength(1)
+    })
+  })
+})
+
+// A fake backend holding a player's games, which pages through them the way the real one
+// does: `limit` games at a time, with a cursor to continue from.
+function serveGames(allGames) {
+  api.listGames.mockImplementation(async (cursor, limit = 10) => {
+    const start = cursor ? Number(cursor) : 0
+    const end = start + limit
+    return {
+      items: allGames.slice(start, end),
+      next_cursor: end < allGames.length ? String(end) : null,
+    }
+  })
+}
+
+function manyGames(count) {
+  return Array.from({ length: count }, (_, index) => makeGame({ id: 'old-' + (index + 1) }))
+}
+
+function listedIds(result) {
+  return result.current.games.map((game) => game.id)
+}
+
+describe('useGame: "Your games" after Show more', () => {
+  async function renderWithTwoPagesShown(allGames) {
+    serveGames(allGames)
+    const result = await renderGame()
+    await waitFor(() => expect(result.current.games).toHaveLength(10))
+    await act(async () => result.current.loadMoreGames())
+    expect(result.current.games).toHaveLength(20)
+    return result
+  }
+
+  it('keeps the extra pages when a guess refreshes the list', async () => {
+    const allGames = manyGames(25)
+    const result = await renderWithTwoPagesShown(allGames)
+    await act(() => result.current.startGame())
+    api.getGame.mockResolvedValue(makeGame({ id: 'game-1', guesses: [makeGuess('slate', 'AACAC')] }))
+
+    await type(result, 'slate')
+    await press(result, 'Enter')
+
+    expect(listedIds(result)).toEqual(allGames.slice(0, 20).map((game) => game.id))
+    expect(result.current.hasMoreGames).toBe(true)
+  })
+
+  it('puts a new game at the top without dropping back to one page', async () => {
+    const allGames = manyGames(25)
+    const result = await renderWithTwoPagesShown(allGames)
+    allGames.unshift(NEW_GAME) // the backend lists the newest game first
+
+    await act(() => result.current.startGame())
+
+    expect(result.current.games).toHaveLength(20)
+    expect(listedIds(result)[0]).toBe('game-1')
+    expect(listedIds(result).slice(1)).toEqual(allGames.slice(1, 20).map((game) => game.id))
+    // the game pushed off the end is still reachable
+    expect(result.current.hasMoreGames).toBe(true)
+  })
+
+  it('still shows one page when the player never asked for more', async () => {
+    serveGames(manyGames(25))
+    const result = await renderGame()
+    await waitFor(() => expect(result.current.games).toHaveLength(10))
+
+    await act(() => result.current.startGame())
+
+    expect(result.current.games).toHaveLength(10)
+  })
+
+  it('adds the next page once when "Show more" is double-clicked', async () => {
+    const allGames = manyGames(25)
+    serveGames(allGames)
+    const result = await renderGame()
+    await waitFor(() => expect(result.current.games).toHaveLength(10))
+
+    await act(async () => {
+      result.current.loadMoreGames()
+      result.current.loadMoreGames()
+    })
+
+    expect(listedIds(result)).toEqual(allGames.slice(0, 20).map((game) => game.id))
+    const requestsForMore = api.listGames.mock.calls.filter(([cursor]) => cursor)
+    expect(requestsForMore).toHaveLength(1)
+  })
+
+  it('can load a third page after the second', async () => {
+    const allGames = manyGames(25)
+    const result = await renderWithTwoPagesShown(allGames)
+
+    await act(async () => result.current.loadMoreGames())
+
+    expect(listedIds(result)).toEqual(allGames.map((game) => game.id))
+    expect(result.current.hasMoreGames).toBe(false)
+  })
+
+  it('never lists a game twice when the list refreshes while the next page is loading', async () => {
+    const allGames = manyGames(25)
+    serveGames(allGames)
+    const result = await renderGame()
+    await waitFor(() => expect(result.current.games).toHaveLength(10))
+
+    await act(async () => {
+      result.current.loadMoreGames()
+      await result.current.startGame() // refreshes the list while page two is on its way
+    })
+
+    expect(new Set(listedIds(result)).size).toBe(result.current.games.length)
+  })
+
+  it('"Show more" works again after a request for more fails', async () => {
+    const allGames = manyGames(25)
+    serveGames(allGames)
+    const result = await renderGame()
+    await waitFor(() => expect(result.current.games).toHaveLength(10))
+    api.listGames.mockRejectedValueOnce(apiError('NETWORK_ERROR'))
+    await act(async () => result.current.loadMoreGames())
+    expect(result.current.games).toHaveLength(10)
+
+    await act(async () => result.current.loadMoreGames())
+
+    expect(result.current.games).toHaveLength(20)
+  })
+})
+
+describe('useGame: a slow answer never replaces the game on screen', () => {
+  // a request the test finishes by hand, to control which answer arrives last
+  function pending() {
+    let finish
+    const promise = new Promise((resolve, reject) => {
+      finish = { with: resolve, failingWith: reject }
+    })
+    return { promise, finish }
+  }
+
+  it('stays on the new game when a linked game finishes loading afterwards', async () => {
+    window.history.replaceState({}, '', '/?game=linked')
+    const slowJoin = pending()
+    api.joinGame.mockReturnValue(slowJoin.promise)
+    api.createGame.mockResolvedValue(makeGame({ id: 'brand-new' }))
+    const result = await renderGame()
+
+    await act(() => result.current.startGame()) // clicked before the linked game arrived
+    await act(async () => slowJoin.finish.with(makeGame({ id: 'linked' })))
+
+    expect(result.current.game.id).toBe('brand-new')
+    expect(window.location.search).toBe('?game=brand-new')
+    expect(result.current.isLoadingGame).toBe(false)
+  })
+
+  it('does not show an error from a linked game that failed after a new game started', async () => {
+    window.history.replaceState({}, '', '/?game=linked')
+    const slowJoin = pending()
+    api.joinGame.mockReturnValue(slowJoin.promise)
+    api.createGame.mockResolvedValue(makeGame({ id: 'brand-new' }))
+    const result = await renderGame()
+
+    await act(() => result.current.startGame())
+    await act(async () => slowJoin.finish.failingWith(apiError('GAME_FULL')))
+
+    expect(result.current.game.id).toBe('brand-new')
+    expect(result.current.message).toBe('')
+    expect(window.location.search).toBe('?game=brand-new')
+  })
+
+  it('stays on the game picked from the list when a slower "New game" finishes afterwards', async () => {
+    const slowCreate = pending()
+    api.createGame.mockReturnValue(slowCreate.promise)
+    api.joinGame.mockResolvedValue(makeGame({ id: 'picked' }))
+    const result = await renderGame()
+
+    await act(async () => {
+      result.current.startGame()
+    })
+    await act(async () => result.current.openGame('picked')) // the player's latest choice
+    await act(async () => slowCreate.finish.with(makeGame({ id: 'brand-new' })))
+
+    expect(result.current.game.id).toBe('picked')
+    expect(window.location.search).toBe('?game=picked')
+  })
+
+  it('stays on game B when the reload after a guess in game A arrives late', async () => {
+    api.createGame.mockResolvedValue(makeGame({ id: 'A' }))
+    const result = await renderStartedGame()
+    await type(result, 'slate')
+    const slowReload = pending()
+    api.getGame.mockReturnValue(slowReload.promise)
+    api.joinGame.mockResolvedValue(makeGame({ id: 'B' }))
+
+    await act(async () => {
+      result.current.pressKey('Enter')
+    })
+    await act(async () => result.current.openGame('B'))
+    await type(result, 'cr') // already typing in game B
+    await act(async () => slowReload.finish.with(makeGame({ id: 'A', guesses: [makeGuess('slate', 'AACAC')] })))
+
+    expect(result.current.game.id).toBe('B')
+    expect(window.location.search).toBe('?game=B')
+    expect(result.current.typedWord).toBe('cr')
+  })
+
+  it('does not wipe what is being typed in game B when the guess in game A is saved late', async () => {
+    api.createGame.mockResolvedValue(makeGame({ id: 'A' }))
+    const result = await renderStartedGame()
+    await type(result, 'slate')
+    const slowGuess = pending()
+    api.submitGuess.mockReturnValue(slowGuess.promise)
+    api.joinGame.mockResolvedValue(makeGame({ id: 'B' }))
+
+    await act(async () => {
+      result.current.pressKey('Enter')
+    })
+    await act(async () => result.current.openGame('B'))
+    await act(async () => slowGuess.finish.with({}))
+
+    expect(result.current.game.id).toBe('B')
+    // game B can be played straight away: the finished guess released the keyboard
+    await type(result, 'cr')
+    expect(result.current.typedWord).toBe('cr')
+  })
+
+  it('does not show game A\'s rejected word on game B', async () => {
+    api.createGame.mockResolvedValue(makeGame({ id: 'A' }))
+    const result = await renderStartedGame()
+    await type(result, 'zzzzz')
+    const slowGuess = pending()
+    api.submitGuess.mockReturnValue(slowGuess.promise)
+    api.joinGame.mockResolvedValue(makeGame({ id: 'B' }))
+
+    await act(async () => {
+      result.current.pressKey('Enter')
+    })
+    await act(async () => result.current.openGame('B'))
+    await act(async () => slowGuess.finish.failingWith(apiError('INVALID_GUESS', "'zzzzz' is not in the word list")))
+
+    expect(result.current.game.id).toBe('B')
+    expect(result.current.message).toBe('')
+    expect(result.current.rowHasProblem).toBe(false)
+  })
+
+  it('stays on game B when game A turns out to be over', async () => {
+    api.createGame.mockResolvedValue(makeGame({ id: 'A' }))
+    const result = await renderStartedGame()
+    await type(result, 'slate')
+    const slowGuess = pending()
+    api.submitGuess.mockReturnValue(slowGuess.promise)
+    api.getGame.mockResolvedValue(makeGame({ id: 'A', status: 'won', answer: 'crane' }))
+    api.joinGame.mockResolvedValue(makeGame({ id: 'B' }))
+
+    await act(async () => {
+      result.current.pressKey('Enter')
+    })
+    await act(async () => result.current.openGame('B'))
+    await act(async () => slowGuess.finish.failingWith(apiError('GAME_OVER')))
+
+    expect(result.current.game.id).toBe('B')
+    expect(result.current.game.status).toBe('in_progress')
+    expect(result.current.message).toBe('')
+  })
+})
+
+
+describe('useGame: whose game is in the address', () => {
+  // The browser's history remembers game addresses. On a shared computer the next person
+  // to sign in must not be joined to the previous person's game by pressing Back.
+  const NOT_A_PLAYER = "You're not a player in that game."
+
+  async function goBack() {
+    await act(async () => {
+      window.history.back()
+      await new Promise((resolve) => window.addEventListener('popstate', resolve, { once: true }))
+    })
+  }
+
+  it('joins a game from a freshly opened link', async () => {
+    window.history.replaceState(null, '', '/?game=invite')
+    api.joinGame.mockResolvedValue(makeGame({ id: 'invite' }))
+
+    const result = await renderGame()
+
+    await waitFor(() => expect(result.current.game?.id).toBe('invite'))
+    expect(api.joinGame).toHaveBeenCalledExactlyOnceWith('invite')
+  })
+
+  it("does not join a game that Back returns to if another player opened it", async () => {
+    // sam played here first: his games are in the history
+    const sams = renderHook(() => useGame(SAM))
+    await waitFor(() => expect(sams.result.current.config).not.toBeNull())
+    api.createGame.mockResolvedValue(makeGame({ id: 'sams-game' }))
+    await act(() => sams.result.current.startGame())
+    api.createGame.mockResolvedValue(makeGame({ id: 'sams-second-game' }))
+    await act(() => sams.result.current.startGame())
+    sams.unmount() // sam signs out...
+    window.history.replaceState({}, '', '/') // ...which clears the address
+
+    // erica signs in on the same browser and presses Back
+    api.joinGame.mockClear()
+    api.getGame.mockRejectedValue(apiError('NOT_A_PLAYER'))
+    const result = await renderGame()
+    await goBack()
+
+    await waitFor(() => expect(result.current.message).toBe(NOT_A_PLAYER))
+    expect(api.joinGame).not.toHaveBeenCalled()
+    expect(result.current.game).toBeNull()
+    expect(window.location.search).toBe('')
+  })
+
+  it('still opens that game if this player is in it too', async () => {
+    const sams = renderHook(() => useGame(SAM))
+    await waitFor(() => expect(sams.result.current.config).not.toBeNull())
+    api.createGame.mockResolvedValue(makeGame({ id: 'shared', players: [SAM, ERICA] }))
+    await act(() => sams.result.current.startGame())
+    api.createGame.mockResolvedValue(makeGame({ id: 'another' }))
+    await act(() => sams.result.current.startGame())
+    sams.unmount()
+    window.history.replaceState({}, '', '/')
+
+    api.joinGame.mockClear()
+    api.getGame.mockResolvedValue(makeGame({ id: 'shared', players: [SAM, ERICA] }))
+    const result = await renderGame()
+    await goBack()
+
+    await waitFor(() => expect(result.current.game?.id).toBe('shared'))
+    expect(api.joinGame).not.toHaveBeenCalled() // opened by reading it, not by joining
+  })
+
+  it('does not join the game left in the address when a different player signs in', async () => {
+    // sam's sign-in expired with his game still in the address bar; nothing cleared it
+    const sams = renderHook(() => useGame(SAM))
+    await waitFor(() => expect(sams.result.current.config).not.toBeNull())
+    api.createGame.mockResolvedValue(makeGame({ id: 'sams-game' }))
+    await act(() => sams.result.current.startGame())
+    sams.unmount()
+    expect(window.location.search).toBe('?game=sams-game')
+
+    api.joinGame.mockClear()
+    api.getGame.mockRejectedValue(apiError('NOT_A_PLAYER'))
+    const result = await renderGame() // erica signs in
+
+    await waitFor(() => expect(result.current.message).toBe(NOT_A_PLAYER))
+    expect(api.joinGame).not.toHaveBeenCalled()
+    expect(window.location.search).toBe('')
+  })
+
+  it('reopens your own game when you sign in again after your sign-in expired', async () => {
+    const first = renderHook(() => useGame(ERICA))
+    await waitFor(() => expect(first.result.current.config).not.toBeNull())
+    api.createGame.mockResolvedValue(makeGame({ id: 'ericas-game' }))
+    await act(() => first.result.current.startGame())
+    first.unmount()
+
+    api.joinGame.mockResolvedValue(makeGame({ id: 'ericas-game' }))
+    const result = await renderGame() // the same player signs back in
+
+    await waitFor(() => expect(result.current.game?.id).toBe('ericas-game'))
+  })
+
+  it('goes Back and Forward between your own games', async () => {
+    const result = await renderGame()
+    api.createGame.mockResolvedValue(makeGame({ id: 'first' }))
+    await act(() => result.current.startGame())
+    api.createGame.mockResolvedValue(makeGame({ id: 'second' }))
+    await act(() => result.current.startGame())
+    api.joinGame.mockImplementation(async (id) => makeGame({ id: id }))
+
+    await goBack()
+
+    await waitFor(() => expect(result.current.game?.id).toBe('first'))
+    expect(window.location.search).toBe('?game=first')
+  })
+
+  it('remembers that a joined invite is now yours, so a later player cannot rejoin it by Back', async () => {
+    window.history.replaceState(null, '', '/?game=invite')
+    api.joinGame.mockResolvedValue(makeGame({ id: 'invite' }))
+    const first = await renderGame()
+    await waitFor(() => expect(first.current.game?.id).toBe('invite'))
+
+    // the address still says ?game=invite, but it is now marked as opened by erica
+    api.joinGame.mockClear()
+    api.getGame.mockRejectedValue(apiError('NOT_A_PLAYER'))
+    const sams = renderHook(() => useGame(SAM))
+
+    await waitFor(() => expect(sams.result.current.message).toBe(NOT_A_PLAYER))
+    expect(api.joinGame).not.toHaveBeenCalled()
   })
 })

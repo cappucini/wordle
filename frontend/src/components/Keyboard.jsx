@@ -15,7 +15,7 @@ function Keyboard({ guesses, onKey, disabled }) {
   const letterResults = bestResultPerLetter(guesses)
 
   return (
-    <div className="keyboard" aria-label="Keyboard">
+    <div className="keyboard" role="group" aria-label="Keyboard">
       {KEYBOARD_ROWS.map((row, rowIndex) => (
         <div className="keyboard-row" key={rowIndex}>
           {row.map((key) => {

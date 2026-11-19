@@ -1,13 +1,14 @@
 import hmac
 import os
 
-from fastapi import Cookie, Depends, Header, Response
+from fastapi import Cookie, Depends, Header, Request, Response
 from sqlalchemy.orm import Session
 
 from app import user_service
 from app.db import AuthSessionRow, UserRow, get_session
 from app.domain.errors import CsrfCheckFailed, NotAuthenticated
 from app.domain.rules import SESSION_DAYS
+from app.live import watchers
 
 # How a signed-in browser is recognised:
 #
@@ -50,9 +51,38 @@ def get_token(wordle_session: str | None = Cookie(default=None)) -> str:
 
 
 def get_auth_session(
-    token: str = Depends(get_token), session: Session = Depends(get_session)
+    request: Request,
+    token: str = Depends(get_token),
+    session: Session = Depends(get_session),
 ) -> AuthSessionRow:
-    return user_service.get_auth_session(session, token)
+    auth_session = user_service.get_auth_session(session, token)
+    # A sign-in that is being used is kept alive: once a day its expiry is pushed back out
+    # to the full length, and any open live connections are extended to match.
+    if user_service.renew_session_if_due(session, auth_session):
+        watchers.extend_session(auth_session.token_hash, auth_session.expires_at)
+        # The browser's cookie must be renewed too. That is left to renew_session_cookie
+        # below, which runs on the way out whatever the route answers.
+        request.state.session_token_to_renew = token
+    return auth_session
+
+
+def renew_session_cookie(request: Request, response: Response) -> None:
+    """Called by main.py on every response. Re-sends the cookie for a session that was
+    extended during this request.
+
+    Done here, on the way out, rather than where the session is extended: a route that
+    refuses the request (an invalid guess, say) builds its own error response, and anything
+    set earlier would be lost. The server would then have extended the sign-in while the
+    browser's cookie kept its old end date.
+    """
+    token = getattr(request.state, "session_token_to_renew", None)
+    if token is None:
+        return
+    # logging in or out sets or clears the cookie itself; leave that instruction alone
+    for header in response.headers.getlist("set-cookie"):
+        if header.startswith(SESSION_COOKIE + "="):
+            return
+    set_session_cookie(response, token)
 
 
 def get_current_user(

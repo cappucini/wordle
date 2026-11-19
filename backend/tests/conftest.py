@@ -6,7 +6,8 @@ How the test database is prepared
 ---------------------------------
 1. Once per run (`database`): check the database is a test one, drop and recreate every
    table, and load the small word lists from tests/words/.
-2. Before every test (`clean_database`): empty the user and game tables. The words stay.
+2. Before every test (`clean_database`): empty the user and game tables, and forget the
+   log-in and sign-up attempts counted so far. The words stay.
    Each test therefore starts from the same state, whatever ran before it.
 """
 
@@ -69,6 +70,12 @@ def database():
 def clean_database(database):
     with database.begin() as connection:
         connection.execute(text(f"TRUNCATE {TABLES_TO_EMPTY} RESTART IDENTITY CASCADE"))
+    # the log-in and sign-up limits count attempts in memory; start each test from zero,
+    # or one test's failed log-ins would lock out the next
+    from app.api.v1 import rate_limits
+
+    for limiter in rate_limits.ALL_LIMITERS:
+        limiter.reset()
 
 
 @pytest.fixture

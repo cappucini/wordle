@@ -10,6 +10,10 @@ The message carries no game data. The page reacts by fetching the game through t
 GET /games/{id} route, so who may see what (and the answer staying hidden) is decided in
 exactly one place, the same as before.
 
+A connection does not outlive the sign-in it was opened with: it is closed when that session
+is logged out (close_session), and when the session's expiry time has passed (checked each
+time its game is announced). One player may hold MAX_LIVE_CONNECTIONS_PER_USER at once.
+
 Limit: the list of watchers lives in this process's memory. That is right for one server
 process, which is how the app runs. With several processes, a guess handled by one would not
 reach pages connected to another; that would need a shared channel such as Postgres
@@ -18,34 +22,74 @@ LISTEN/NOTIFY or Redis.
 
 import asyncio
 import threading
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import WebSocket
 
+from app.domain.rules import MAX_LIVE_CONNECTIONS_PER_USER
+
 GAME_UPDATED = {"type": "game_updated"}
+
+# WebSocket close codes the page understands (see frontend/src/api.js)
+CLOSE_NOT_AUTHENTICATED = 4401
+
+
+@dataclass(eq=False)  # compared by identity: each open connection is its own entry
+class _Watcher:
+    websocket: WebSocket
+    # the event loop the connection belongs to; notices are handed to it from other threads
+    loop: asyncio.AbstractEventLoop
+    user_id: UUID
+    # which sign-in opened it (the hash of the session token), and when that sign-in ends
+    session_hash: str
+    expires_at: datetime
 
 
 class GameWatchers:
-    def __init__(self) -> None:
-        # game id -> the open connections watching it. Each connection is kept with the
-        # event loop it belongs to, because notify() is called from other threads.
-        self._watchers: dict[UUID, set[tuple[WebSocket, asyncio.AbstractEventLoop]]] = {}
+    def __init__(self, max_per_user: int = MAX_LIVE_CONNECTIONS_PER_USER) -> None:
+        self.max_per_user = max_per_user
+        # game id -> the open connections watching it
+        self._watchers: dict[UUID, list[_Watcher]] = {}
         # routes run on several threads, so every change to the dict above takes this lock
         self._lock = threading.Lock()
 
-    def add(self, game_id: UUID, websocket: WebSocket) -> None:
-        """Start sending this connection the game's notices. Call from the connection's own task."""
-        entry = (websocket, asyncio.get_running_loop())
+    def now(self) -> datetime:
+        """The current time. A method so tests can move it forward."""
+        return datetime.now(timezone.utc)
+
+    def add(
+        self,
+        game_id: UUID,
+        websocket: WebSocket,
+        user_id: UUID,
+        session_hash: str,
+        expires_at: datetime,
+    ) -> bool:
+        """Start sending this connection the game's notices. Call from the connection's own task.
+
+        Returns False, and adds nothing, if this user already holds as many connections
+        as one user may.
+        """
+        watcher = _Watcher(
+            websocket, asyncio.get_running_loop(), user_id, session_hash, expires_at
+        )
         with self._lock:
-            self._watchers.setdefault(game_id, set()).add(entry)
+            held = sum(
+                1
+                for watching in self._watchers.values()
+                for other in watching
+                if other.user_id == user_id
+            )
+            if held >= self.max_per_user:
+                return False
+            self._watchers.setdefault(game_id, []).append(watcher)
+            return True
 
     def remove(self, game_id: UUID, websocket: WebSocket) -> None:
         with self._lock:
-            entries = self._watchers.get(game_id, set())
-            for entry in [entry for entry in entries if entry[0] is websocket]:
-                entries.discard(entry)
-            if not entries:
-                self._watchers.pop(game_id, None)
+            self._drop(game_id, lambda watcher: watcher.websocket is websocket)
 
     def count(self, game_id: UUID) -> int:
         with self._lock:
@@ -56,14 +100,60 @@ class GameWatchers:
 
         Safe to call from any thread, and returns straight away: each message is handed to
         the connection's event loop to send, so a slow connection never holds up the request
-        that made the change.
+        that made the change. A connection whose sign-in has expired is closed instead.
         """
+        now = self.now()
         with self._lock:
-            entries = list(self._watchers.get(game_id, ()))
-        for websocket, loop in entries:
-            if loop.is_closed():
-                continue
-            asyncio.run_coroutine_threadsafe(_send_update(websocket), loop)
+            watching = list(self._watchers.get(game_id, ()))
+            expired = [watcher for watcher in watching if watcher.expires_at <= now]
+            self._drop(game_id, lambda watcher: watcher.expires_at <= now)
+        for watcher in watching:
+            if watcher in expired:
+                _run(watcher, _close(watcher.websocket, CLOSE_NOT_AUTHENTICATED))
+            else:
+                _run(watcher, _send_update(watcher.websocket))
+
+    def close_session(self, session_hash: str) -> None:
+        """Close every connection opened with this sign-in. Called when it is logged out."""
+        closing = []
+        with self._lock:
+            for game_id in list(self._watchers):
+                closing += [
+                    watcher
+                    for watcher in self._watchers[game_id]
+                    if watcher.session_hash == session_hash
+                ]
+                self._drop(game_id, lambda watcher: watcher.session_hash == session_hash)
+        for watcher in closing:
+            _run(watcher, _close(watcher.websocket, CLOSE_NOT_AUTHENTICATED))
+
+    def extend_session(self, session_hash: str, expires_at: datetime) -> None:
+        """A sign-in was extended: its open connections now last until the new time too."""
+        with self._lock:
+            for watching in self._watchers.values():
+                for watcher in watching:
+                    if watcher.session_hash == session_hash:
+                        watcher.expires_at = expires_at
+
+    def _drop(self, game_id: UUID, should_drop) -> None:
+        """Removes the matching connections from a game. The caller holds the lock."""
+        remaining = [
+            watcher
+            for watcher in self._watchers.get(game_id, ())
+            if not should_drop(watcher)
+        ]
+        if remaining:
+            self._watchers[game_id] = remaining
+        else:
+            self._watchers.pop(game_id, None)
+
+
+def _run(watcher: _Watcher, coroutine) -> None:
+    """Hands a coroutine to the connection's own event loop, from whatever thread this is."""
+    if watcher.loop.is_closed():
+        coroutine.close()
+        return
+    asyncio.run_coroutine_threadsafe(coroutine, watcher.loop)
 
 
 async def _send_update(websocket: WebSocket) -> None:
@@ -74,6 +164,13 @@ async def _send_update(websocket: WebSocket) -> None:
         # watchers; there is nothing to do here, and one dead connection must not stop
         # the notice reaching the others.
         pass
+
+
+async def _close(websocket: WebSocket, code: int) -> None:
+    try:
+        await websocket.close(code=code)
+    except Exception:
+        pass  # already closed
 
 
 # the one set of watchers for this server process

@@ -103,6 +103,25 @@ def test_password_outside_limits_is_rejected(length):
         CredentialsRequest(username="erica", password="p" * length)
 
 
+@pytest.mark.parametrize(
+    "password",
+    [
+        pytest.param(" " * 8, id="eight spaces"),
+        pytest.param(" " * 20, id="twenty spaces"),
+        pytest.param("\t\t\t\t\t\t\t\t", id="tabs"),
+        pytest.param(" \n \t \r   ", id="mixed blank characters"),
+    ],
+)
+def test_password_made_only_of_blank_characters_is_rejected(password):
+    with pytest.raises(ValidationError):
+        CredentialsRequest(username="erica", password=password)
+
+
+def test_password_may_contain_spaces_as_long_as_it_has_something_else():
+    password = "four words with spaces"
+    assert CredentialsRequest(username="erica", password=password).password == password
+
+
 def test_password_is_kept_exactly_as_typed():
     # unlike the username: case and spaces are part of the password
     password = "  MiXeD Case  "

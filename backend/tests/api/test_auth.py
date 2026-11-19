@@ -72,6 +72,7 @@ def test_sign_up_with_a_taken_username_is_refused(client, new_client, second_spe
         pytest.param({"username": "erica!", "password": PASSWORD}, "username", id="username with punctuation"),
         pytest.param({"username": "erica", "password": "short"}, "password", id="password too short"),
         pytest.param({"username": "erica", "password": "p" * 129}, "password", id="password too long"),
+        pytest.param({"username": "erica", "password": " " * 8}, "password", id="password of only spaces"),
         pytest.param({"username": "erica"}, "password", id="password missing"),
         pytest.param({"password": PASSWORD}, "username", id="username missing"),
         pytest.param(
@@ -250,6 +251,102 @@ def test_session_that_has_not_expired_yet_still_works(player, db):
     assert player.get("/users/me").status_code == 200
 
 
+# ---------- a sign-in is extended while the player keeps using it ----------
+
+
+def session_expiry(db):
+    from app.db import AuthSessionRow
+
+    db.expire_all()
+    return db.query(AuthSessionRow).one().expires_at
+
+
+def test_session_used_after_a_day_is_extended_to_seven_days_from_now(player, db):
+    # signed in two days ago: five of the seven days are left
+    set_session_expiry(db, datetime.now(timezone.utc) + timedelta(days=5))
+
+    response = player.get("/users/me")
+
+    assert response.status_code == 200
+    remaining = session_expiry(db) - datetime.now(timezone.utc)
+    assert abs(remaining - timedelta(days=7)) < timedelta(seconds=5)
+    # the browser's copy of the cookie is renewed to match
+    assert "wordle_session=" in response.headers["set-cookie"]
+    assert "Max-Age=604800" in response.headers["set-cookie"]
+    assert "HttpOnly" in response.headers["set-cookie"]
+
+
+def test_extended_session_keeps_the_same_token_and_csrf_token(player, db):
+    token_before = player.session_token
+    set_session_expiry(db, datetime.now(timezone.utc) + timedelta(days=5))
+
+    body = player.get("/users/me").json()
+
+    assert player.session_token == token_before
+    assert body["csrf_token"] == player.csrf_token
+    assert player.post("/games", json={"word_length": 5}).status_code == 201
+
+
+def test_any_signed_in_request_extends_the_session(player, db):
+    set_session_expiry(db, datetime.now(timezone.utc) + timedelta(days=3))
+
+    player.get("/games")
+
+    assert session_expiry(db) - datetime.now(timezone.utc) > timedelta(days=6, hours=23)
+
+
+def session_cookies_set_by(response) -> list[str]:
+    return [
+        header
+        for header in response.headers.get_list("set-cookie")
+        if header.startswith("wordle_session=")
+    ]
+
+
+def test_cookie_is_renewed_even_when_the_request_that_extends_the_session_is_refused(player, db):
+    # Otherwise the server would extend the sign-in while the browser's cookie kept its
+    # old end date, and an active player could still be signed out on day seven.
+    set_session_expiry(db, datetime.now(timezone.utc) + timedelta(days=3))
+
+    response = player.post("/games", json={"word_length": 99})  # refused: no such length
+
+    assert response.status_code == 422
+    assert session_expiry(db) - datetime.now(timezone.utc) > timedelta(days=6, hours=23)
+    [cookie] = session_cookies_set_by(response)
+    assert "Max-Age=604800" in cookie
+    assert "HttpOnly" in cookie
+
+
+def test_logging_out_with_a_session_due_for_renewal_still_clears_the_cookie(player, db):
+    set_session_expiry(db, datetime.now(timezone.utc) + timedelta(days=3))
+
+    response = player.delete("/sessions/current")
+
+    assert response.status_code == 204
+    [cookie] = session_cookies_set_by(response)  # one instruction to the browser, not two
+    assert "Max-Age=0" in cookie
+    assert player.get("/users/me").status_code == 401
+
+
+def test_session_used_again_within_a_day_is_left_alone(player, db):
+    # extended (or created) twelve hours ago; no need to write to the database on every request
+    almost_new = datetime.now(timezone.utc) + timedelta(days=6, hours=12)
+    set_session_expiry(db, almost_new)
+
+    response = player.get("/users/me")
+
+    assert response.status_code == 200
+    assert session_expiry(db) == almost_new
+    assert "set-cookie" not in response.headers
+
+
+def test_an_expired_session_is_not_brought_back(player, db):
+    set_session_expiry(db, datetime.now(timezone.utc) - timedelta(seconds=1))
+
+    assert player.get("/users/me").status_code == 401
+    assert player.get("/users/me").status_code == 401
+
+
 def test_new_session_lasts_seven_days(player, db):
     from app.db import AuthSessionRow
 
@@ -257,6 +354,95 @@ def test_new_session_lasts_seven_days(player, db):
 
     lifetime = session_row.expires_at - session_row.created_at
     assert abs(lifetime - timedelta(days=7)) < timedelta(seconds=5)
+
+
+def test_logging_in_clears_out_that_users_expired_sessions(player, new_client, db):
+    from app.db import AuthSessionRow
+
+    # the sign-up session and one more, both long expired
+    new_client().post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+    set_session_expiry(db, datetime.now(timezone.utc) - timedelta(days=30))
+
+    response = new_client().post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+
+    assert response.status_code == 201
+    db.expire_all()
+    # only the session just created is left
+    assert db.query(AuthSessionRow).count() == 1
+
+
+def test_logging_in_keeps_sessions_that_are_still_valid(player, new_client, db):
+    from app.db import AuthSessionRow
+
+    new_client().post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+
+    assert db.query(AuthSessionRow).count() == 2
+    assert player.get("/users/me").status_code == 200
+
+
+def test_logging_in_leaves_other_users_sessions_alone(player, other_player, new_client, db):
+    from app.db import AuthSessionRow, UserRow
+
+    set_session_expiry(db, datetime.now(timezone.utc) - timedelta(days=30))
+
+    new_client().post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+
+    db.expire_all()
+    other = db.query(UserRow).filter_by(username=other_player.username).one()
+    assert db.query(AuthSessionRow).filter_by(user_id=other.id).count() == 1
+
+
+def test_signing_in_again_in_the_same_browser_ends_the_session_it_replaces(player, new_client):
+    copy_of_old_session = player.in_another_browser(new_client())
+    assert copy_of_old_session.get("/users/me").status_code == 200
+
+    # the browser still holds the old cookie when it logs in again
+    response = player.client.post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+
+    assert response.status_code == 201
+    assert player.client.get(f"{API}/users/me").status_code == 200  # the new session works
+    assert copy_of_old_session.get("/users/me").status_code == 401  # the old one is gone
+
+
+def test_signing_up_in_a_browser_that_is_signed_in_ends_that_session(player, new_client):
+    copy_of_old_session = player.in_another_browser(new_client())
+
+    response = player.client.post(
+        f"{API}/users", json={"username": "second_account", "password": PASSWORD}
+    )
+
+    assert response.status_code == 201
+    assert player.client.get(f"{API}/users/me").json()["user"]["username"] == "second_account"
+    assert copy_of_old_session.get("/users/me").status_code == 401
+
+
+def test_a_failed_log_in_does_not_end_the_session_already_in_the_browser(player):
+    response = player.client.post(
+        f"{API}/sessions", json={"username": player.username, "password": "wrong password"}
+    )
+
+    assert response.status_code == 401
+    assert player.get("/users/me").status_code == 200
+
+
+def test_logging_in_elsewhere_does_not_end_other_sessions(player, new_client):
+    # a second device has no cookie to replace, so the first stays signed in
+    second_device = new_client()
+    second_device.post(
+        f"{API}/sessions", json={"username": player.username, "password": player.password}
+    )
+
+    assert player.get("/users/me").status_code == 200
 
 
 # ---------- log out ----------

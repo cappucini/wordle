@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 
 from app.db import AuthSessionRow, UserRow
 from app.domain.errors import InvalidCredentials, NotAuthenticated, UsernameTaken
-from app.domain.rules import SESSION_DAYS
+from app.domain.rules import SESSION_DAYS, SESSION_RENEW_AFTER_DAYS
 from app.security import hash_password, hash_token, new_token, verify_password
 
 # Checked when the username doesn't exist, so a wrong username takes as long to reject
@@ -90,6 +90,15 @@ def login(session: Session, username: str, password: str) -> tuple[UserRow, str,
         # main.py answers 401 INVALID_CREDENTIALS
         raise InvalidCredentials("Wrong username or password")
 
+    # Tidy up while we are here: this user's sign-ins that have already expired can never be
+    # used again. Without this they would stay in the table for good, since an expired
+    # session is otherwise only removed when someone tries to use it.
+    session.execute(
+        delete(AuthSessionRow).where(
+            AuthSessionRow.user_id == user.id,
+            AuthSessionRow.expires_at <= datetime.now(timezone.utc),
+        )
+    )
     token, csrf_token = _start_session(session, user)
     session.commit()
     return user, token, csrf_token
@@ -121,6 +130,25 @@ def get_auth_session(session: Session, token: str) -> AuthSessionRow:
         session.commit()
         raise NotAuthenticated("Your sign-in has expired. Sign in again")
     return auth_session
+
+
+# Called by: the get_auth_session dependency in auth.py, straight after the function above.
+def renew_session_if_due(session: Session, auth_session: AuthSessionRow) -> bool:
+    """Push a sign-in that is being used out to the full SESSION_DAYS from now.
+
+    A player who keeps playing stays signed in; one who stops is signed out SESSION_DAYS
+    after their last visit. Returns True if the expiry was moved, so the caller can renew
+    the browser's cookie to match. Does nothing if it was already extended (or created)
+    within the last SESSION_RENEW_AFTER_DAYS.
+    """
+    now = datetime.now(timezone.utc)
+    full_length = timedelta(days=SESSION_DAYS)
+    time_since_last_extended = full_length - (auth_session.expires_at - now)
+    if time_since_last_extended < timedelta(days=SESSION_RENEW_AFTER_DAYS):
+        return False
+    auth_session.expires_at = now + full_length
+    session.commit()
+    return True
 
 
 # --- helpers used only inside this file (the leading underscore marks them as private) ---

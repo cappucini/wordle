@@ -20,6 +20,12 @@ describe('Keyboard', () => {
     expect(key('Backspace')).toBeInTheDocument()
   })
 
+  it('is a labelled group, so screen readers announce "Keyboard" on entering it', () => {
+    render(<Keyboard guesses={[]} onKey={() => {}} disabled={false} />)
+
+    expect(screen.getByRole('group', { name: 'Keyboard' })).toBeInTheDocument()
+  })
+
   it('reports the key that was clicked', async () => {
     const onKey = vi.fn()
     render(<Keyboard guesses={[]} onKey={onKey} disabled={false} />)

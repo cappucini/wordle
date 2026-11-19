@@ -130,11 +130,85 @@ ws://localhost:8000/api/v1/games/{game_id}/ws
   (the addresses in `CORS_ORIGINS`). A refused connection is closed with code `4401` (not
   signed in), `4403` (not a player) or `4404` (no such game).
 - If the connection drops, the page reconnects after 1 second, then 2, 4, 8 and at most
-  every 10 seconds, and checks for anything it missed as soon as it is back.
+  every 10 seconds, and checks for anything it missed as soon as it is back. While there is
+  no connection (including on networks that block WebSockets) it asks the backend every
+  5 seconds instead (while the tab is visible), so a shared board still updates.
+- A connection ends with its sign-in: it is closed with `4401` when the player logs out or
+  the session expires.
+- One player may hold 10 connections at once (about ten tabs). An eleventh is closed with
+  `4429`, and that tab uses the 5-second check.
 - The list of connected pages is kept in the backend's memory, which is right for the single
   backend process this project runs. Running several backend processes would need a shared
   channel (for example Postgres `LISTEN`/`NOTIFY`) so a guess handled by one reaches pages
   connected to another.
+
+### Staying signed in
+
+A sign-in lasts 7 days and is extended while it is being used: once a day, a request from a
+signed-in player pushes the expiry back out to 7 days from then. A player who keeps playing
+stays signed in; one who stops is signed out 7 days after their last visit. Logging in again
+in a browser that is already signed in ends the session it replaces.
+
+Each game address the page puts in the browser's history records which player opened it. A
+link nobody has opened yet joins you to the game. An address left behind by a different
+player on the same browser (reached with Back, or still in the address bar when their
+sign-in ended) does not: the game is only shown if you are already one of its players.
+
+### Limits on log-in and sign-up
+
+To slow down password guessing, the backend counts attempts over the last five minutes and
+answers `429 TOO_MANY_ATTEMPTS` (with a `Retry-After` header) once a limit is reached.
+
+**Always on**
+
+| Limit | Allowed in 5 minutes |
+|---|---|
+| Wrong passwords for one username | 10 |
+
+A successful log-in clears that username's count. Someone who knows a username can keep it
+at its limit and so stop that player logging in for a while; they cannot end a session the
+player already has.
+
+**Off unless `RATE_LIMIT_BY_ADDRESS=true` is set on the backend**
+
+| Limit | Allowed in 5 minutes |
+|---|---|
+| Wrong passwords from one network address, across all usernames | 30 |
+| Accounts created from one network address | 20 |
+| Sign-ups refused because the username was taken, from one network address | 30 |
+
+These three count by the address a request comes from, so they only work where the backend
+can tell visitors apart. Run with Docker as described above, it cannot: every browser
+reaches the backend from Docker's own address, and the same is true behind a reverse proxy.
+Counted that way, one visitor's wrong passwords would lock out everyone. Turn the setting on
+only in a deployment where each visitor's own address reaches the backend.
+
+Each attempt is counted before it is carried out, so the limits also hold when many requests
+arrive at the same instant. The counts are kept in the backend's memory and reset when it
+restarts.
+
+The numbers are in `backend/app/domain/rules.py`. Each can be changed without editing code
+by setting an environment variable on the backend: `MAX_FAILED_LOGINS_PER_USERNAME`,
+`MAX_FAILED_LOGINS_PER_ADDRESS`, `MAX_SIGNUPS_PER_ADDRESS` or
+`MAX_REFUSED_SIGNUPS_PER_ADDRESS`.
+
+### Changing the database schema
+
+The backend creates any missing tables when it starts, but it does not alter tables that
+already exist; there are no migrations. After a change to the models in `backend/app/db.py`
+(a new column or index), recreate the development database:
+
+```bash
+docker compose down -v      # deletes the dev database, including its users and games
+docker compose up --build
+```
+
+The word lists are loaded again automatically. To keep existing data instead, apply the
+change by hand. For the index added on `game_players.user_id`:
+
+```bash
+docker compose exec db psql -U wordle -d wordle -c "CREATE INDEX IF NOT EXISTS ix_game_players_user_id ON game_players (user_id);"
+```
 
 ### Development Workflow
 
@@ -212,13 +286,13 @@ Run these from the repository root.
 
 | Command | What it runs | Tests | Takes about |
 |---|---|---|---|
-| `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 215 | 2 s |
-| `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 193 | 3 s |
-| `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres. | 151 | 9 s |
-| `make test-security` | Security tests: sign-in and CSRF on every route, who may open the WebSocket, hashed secrets, game access, the hidden answer, hostile input. | 192 | 10 s |
+| `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 244 | 2 s |
+| `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 252 | 4 s |
+| `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres. | 175 | 9 s |
+| `make test-security` | Security tests: sign-in and CSRF on every route, who may open the WebSocket, log-in and sign-up limits, hashed secrets, game access, the hidden answer, hostile input. | 221 | 19 s |
 | `make test-concurrency` | Race tests: joins, guesses and sign-ups sent at the same instant. | 8 | 5 s |
 | `make test-e2e` | End-to-end tests: headless Chromium driving the real frontend and backend through seven user journeys. | 7 | 20 s |
-| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 766 | 50 s |
+| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 907 | 60 s |
 
 The first run of a layer is slower, because Docker builds its image.
 

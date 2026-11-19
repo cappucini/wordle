@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { SIGNED_OUT_EVENT, getCurrentUser, login, logout, register } from '../api'
+import { errorText } from '../errorText'
 
 // Knows who is signed in, and how to sign in, create an account and sign out.
 // The session lives in a cookie the page cannot read, so the only way to know who is signed
@@ -16,8 +17,13 @@ export function useAuth() {
   useEffect(() => {
     getCurrentUser()
       .then((currentUser) => setUser(currentUser))
-      .catch(() => {
-        // no session (or the server can't be reached): stay signed out and show the form
+      .catch((error) => {
+        // Nobody is signed in: stay signed out and show the form. If the reason is that the
+        // server could not be reached, say so on the form rather than leaving the visitor
+        // to find out when they try to sign in.
+        if (error.code === 'NETWORK_ERROR') {
+          setNotice(errorText(error))
+        }
       })
       .finally(() => setIsCheckingSignIn(false))
   }, [])

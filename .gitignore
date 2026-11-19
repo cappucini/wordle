@@ -221,3 +221,9 @@ backend/scripts/sources/
 
 # Redesign tool working files
 frontend/.hallmark/
+
+# The Python rules near the top ignore any folder called lib, build or dist, anywhere.
+# Source folders with those names in the frontend or the tests are ours and must be committed.
+!frontend/src/**/lib/
+!frontend/src/**/build/
+!e2e/**/lib/

@@ -207,3 +207,13 @@ def test_limit_outside_bounds_is_refused(player, limit):
     assert response.status_code == 422
     assert response.json()["code"] == "INVALID_REQUEST"
     assert response.json()["detail"].startswith("limit: ")
+
+
+def test_the_lookup_of_a_users_games_has_an_index(database):
+    # "Your games" finds rows in game_players by user. The table's primary key starts with
+    # the game, so without an index on user_id every lookup reads the whole table.
+    from sqlalchemy import inspect
+
+    indexed = [index["column_names"] for index in inspect(database).get_indexes("game_players")]
+
+    assert ["user_id"] in indexed

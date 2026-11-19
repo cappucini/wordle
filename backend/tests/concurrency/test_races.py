@@ -176,7 +176,13 @@ def test_winning_guesses_at_once_only_one_wins(make_player, new_client):
 def test_same_username_signed_up_at_once_creates_one_account(new_client, db):
     from app.db import UserRow
 
+    from app.api.v1 import rate_limits
+
     for round_number in range(ROUNDS):
+        # each round refuses five sign-ups; start the count again so the rounds together
+        # do not reach the limit on refused sign-ups, which is not what this test is about
+        for limiter in rate_limits.ALL_LIMITERS:
+            limiter.reset()
         username = f"contested_{round_number}"
         browsers = [new_client() for _ in range(6)]
 

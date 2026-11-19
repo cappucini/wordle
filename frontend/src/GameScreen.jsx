@@ -39,7 +39,7 @@ function GameScreen({ user, onSignOut }) {
     loadMoreGames,
     // switches to another game from the list
     openGame,
-  } = useGame()
+  } = useGame(user)
 
   if (config === null) {
     return <p className="message">{message || 'Loading...'}</p>
@@ -85,7 +85,7 @@ function GameScreen({ user, onSignOut }) {
           {/* Display the board, passing in game (to get word length, guesses so far), the typed word, and if the row being typed in has an error */}
           <Board game={game} typedWord={typedWord} hasError={rowHasProblem} />
           {/* Show game result if you won or lost */}
-          <GameResult game={game} />
+          <GameResult game={game} currentUser={user} />
           {/* Display on-screen keyboard, disabling it once the game is over */}
           <Keyboard guesses={game.guesses} onKey={pressKey} disabled={game.status !== 'in_progress'} />
         </>

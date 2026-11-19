@@ -1,20 +1,18 @@
 // App: the whole page with a fake backend. Checks the two screens (sign-in form, game) and
 // the moves between them, and one full guess from key press to coloured tiles.
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from './api'
 import App from './App'
 import { CONFIG, ERICA, apiError, makeGame, makeGuess } from './test/factories'
 
-// keep the real SIGNED_OUT_EVENT name; replace every function that would call the backend
+// keep api.js's constants; replace every function that would call the backend
 vi.mock('./api', async (importOriginal) => {
   const real = await importOriginal()
   return {
-    SIGNED_OUT_EVENT: real.SIGNED_OUT_EVENT,
-    SOCKET_CLOSED_NOT_AUTHENTICATED: real.SOCKET_CLOSED_NOT_AUTHENTICATED,
-    SOCKET_CLOSED_NOT_A_PLAYER: real.SOCKET_CLOSED_NOT_A_PLAYER,
-    SOCKET_CLOSED_GAME_NOT_FOUND: real.SOCKET_CLOSED_GAME_NOT_FOUND,
+    // every constant api.js exports (event names, close codes, page sizes) keeps its real value
+    ...Object.fromEntries(Object.entries(real).filter(([, value]) => typeof value !== 'function')),
     openGameSocket: vi.fn(),
     getConfig: vi.fn(),
     getGame: vi.fn(),
@@ -71,6 +69,22 @@ describe('App: signing in and out', () => {
     expect(screen.queryByText('Signed in as')).toBeNull()
   })
 
+  it('says so on the form when the server cannot be reached', async () => {
+    api.getCurrentUser.mockRejectedValue(apiError('NETWORK_ERROR'))
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Sign in to play' })).toBeInTheDocument()
+    expect(screen.getByText("Can't reach the game server. Is it running?")).toBeInTheDocument()
+  })
+
+  it('shows no such warning to an ordinary visitor', async () => {
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Sign in to play' })
+    expect(screen.queryByText(/Can't reach the game server/)).toBeNull()
+  })
+
   it('goes straight to the game for someone already signed in', async () => {
     await renderSignedIn()
 
@@ -124,6 +138,32 @@ describe('App: signing in and out', () => {
     expect(await screen.findByRole('heading', { name: 'Sign in to play' })).toBeInTheDocument()
     // otherwise the next person to sign in on this browser would be joined to that game
     expect(window.location.search).toBe('')
+  })
+
+  it("does not join the next player to the previous player's game when they press Back", async () => {
+    // erica plays two games on a shared computer, then signs out
+    await renderSignedIn()
+    api.createGame.mockResolvedValue(makeGame({ id: 'ericas-first' }))
+    await userEvent.click(screen.getByRole('button', { name: 'New game' }))
+    await waitFor(() => expect(window.location.search).toBe('?game=ericas-first'))
+    api.createGame.mockResolvedValue(makeGame({ id: 'ericas-second' }))
+    await userEvent.click(screen.getByRole('button', { name: 'New game' }))
+    await waitFor(() => expect(window.location.search).toBe('?game=ericas-second'))
+    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    // sam signs in on the same browser and presses Back
+    api.login.mockResolvedValue({ id: 'user-sam', username: 'sam' })
+    api.getGame.mockRejectedValue(apiError('NOT_A_PLAYER'))
+    api.joinGame.mockClear()
+    await userEvent.type(await screen.findByLabelText('Username'), 'sam')
+    await userEvent.type(screen.getByLabelText('Password'), 'correct horse')
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    await screen.findByRole('button', { name: 'New game' })
+    act(() => window.history.back())
+
+    expect(await screen.findByText("You're not a player in that game.")).toBeInTheDocument()
+    expect(api.joinGame).not.toHaveBeenCalled()
+    expect(screen.queryByRole('img')).toBeNull() // no board
   })
 
   it('returns to the form even when the sign-out request fails', async () => {
@@ -209,6 +249,49 @@ describe('App: the game screen', () => {
     expect(screen.getAllByRole('img').slice(0, 2).map((tile) => tile.textContent)).toEqual(['c', ''])
   })
 
+  it('lets a keyboard-only player open a game from the list and submit a guess with Enter', async () => {
+    const listed = makeGame({ id: 'game-0' })
+    api.listGames.mockResolvedValue({ items: [listed], next_cursor: null })
+    api.joinGame.mockResolvedValue(listed)
+    api.getGame.mockResolvedValue(listed)
+    await renderSignedIn()
+    const list = await screen.findByRole('region', { name: 'Your games' })
+
+    within(list).getByRole('button').focus()
+    await userEvent.keyboard('{Enter}') // opens the game
+    await screen.findAllByRole('img')
+    await userEvent.keyboard('crane{Enter}') // types a guess and submits it
+
+    expect(api.submitGuess).toHaveBeenCalledExactlyOnceWith('game-0', 'crane')
+  })
+
+  it('does not treat an address ending in "?game=" as an invite', async () => {
+    window.history.replaceState({}, '', '/?game=')
+
+    await renderSignedIn()
+
+    expect(api.joinGame).not.toHaveBeenCalled()
+    expect(screen.getByText(/Pick a word length and start a game/)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+  })
+
+  it("tells the other players who won, not \"You got it\"", async () => {
+    window.history.replaceState({}, '', '/?game=shared')
+    api.joinGame.mockResolvedValue(
+      makeGame({
+        id: 'shared',
+        status: 'won',
+        answer: 'crane',
+        players: [ERICA, { id: 'user-sam', username: 'sam' }],
+        guesses: [makeGuess('crane', 'CCCCC', 'sam')],
+      }),
+    )
+
+    await renderSignedIn()
+
+    expect(await screen.findByText('sam got it in 1 guess!')).toBeInTheDocument()
+  })
+
   it('lists the player\'s games and opens the one clicked', async () => {
     const older = makeGame({ id: 'game-0', word_length: 6, status: 'lost', answer: 'planet' })
     api.listGames.mockResolvedValue({ items: [older], next_cursor: null })
@@ -220,5 +303,22 @@ describe('App: the game screen', () => {
 
     expect(await screen.findByText(/Out of guesses/)).toHaveTextContent('The word was planet.')
     expect(window.location.search).toBe('?game=game-0')
+  })
+})
+
+describe('App: when something unexpected breaks while drawing the page', () => {
+  it('shows a message and a way to reload instead of a blank page', async () => {
+    // the browser and React both report the error to the console; keep the test output clean
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    // a game missing its guesses makes the board fail while drawing
+    api.getCurrentUser.mockResolvedValue(ERICA)
+    window.history.replaceState(null, '', '/?game=broken')
+    api.joinGame.mockResolvedValue({ ...makeGame({ id: 'broken' }), guesses: null })
+
+    render(<App />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong.')
+    expect(screen.getByRole('button', { name: 'Reload the page' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Wordle' })).toBeInTheDocument() // the title is still there
   })
 })
