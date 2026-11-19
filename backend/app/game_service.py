@@ -80,21 +80,24 @@ def list_games(
     return games[:limit], has_more
 
 
-def join_game(session: Session, user: UserRow, game_id: UUID) -> GameRow:
-    """Add the user to a game's players. Joining a game you are already in changes nothing."""
+def join_game(session: Session, user: UserRow, game_id: UUID) -> tuple[GameRow, bool]:
+    """Add the user to a game's players. Joining a game you are already in changes nothing.
+
+    Returns the game, and whether the user was added just now (False if already a player).
+    """
     # Lock the game row, so two people joining at the same moment are handled one at a time
     # and the player limit can't be passed.
     game = session.get(GameRow, game_id, with_for_update=True)
     if game is None:
         raise GameNotFound(f"Game {game_id} not found")
     if _is_player(game, user):
-        return game
+        return game, False
     if len(game.players) >= MAX_PLAYERS_PER_GAME:
         raise GameFull(f"This game already has {MAX_PLAYERS_PER_GAME} players")
 
     game.players.append(user)
     session.commit()
-    return game
+    return game, True
 
 
 def submit_guess(

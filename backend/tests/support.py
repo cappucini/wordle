@@ -78,6 +78,13 @@ class Player:
     def guess(self, game_id: str, word: str):
         return self.post(f"/games/{game_id}/guesses", json={"word_guessed": word})
 
+    def watch(self, game_id: str, **kwargs):
+        """Opens the WebSocket a page keeps open while it shows this game.
+
+        Use as `with player.watch(game_id) as socket:` and read with `socket.receive_json()`.
+        """
+        return self.client.websocket_connect(f"{API}/games/{game_id}/ws", **kwargs)
+
     def game(self, game_id: str) -> dict:
         response = self.get(f"/games/{game_id}")
         assert response.status_code == 200, response.text

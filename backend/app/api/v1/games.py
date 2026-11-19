@@ -47,12 +47,14 @@ from app.api.v1.schemas import (
     GuessResponse,
 )
 from app.db import UserRow, get_session
+from app.live import watchers
 
 router = APIRouter(prefix="/api/v1/games", tags=["games"])
 
 # Every route here needs a signed-in user: Depends(get_current_user) reads the session cookie
 # and returns the user, or stops the request with a 401.
 # Routes that change something (POST) also require the CSRF token: Depends(require_csrf).
+# Routes that change a game also tell the pages watching it: watchers.notify (see app/live.py).
 
 
 @router.get("", response_model=GameListResponse)
@@ -114,7 +116,11 @@ def join_game(
     user: UserRow = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    return GameResponse.from_row(game_service.join_game(session, user, game_id))
+    game, newly_joined = game_service.join_game(session, user, game_id)
+    if newly_joined:
+        # the players already in the game see the newcomer appear
+        watchers.notify(game_id)
+    return GameResponse.from_row(game)
 
 
 @router.get("/{game_id}/guesses", response_model=list[GuessResponse])
@@ -142,4 +148,6 @@ def submit_guess(
     guess, game = game_service.submit_guess(
         session, user, game_id, body.word_guessed
     )
+    # the guess is saved; tell every page that has this game open
+    watchers.notify(game_id)
     return GuessCreatedResponse.from_rows(guess, game)

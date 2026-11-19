@@ -1,9 +1,9 @@
-import os
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.config import router as config_router
+from app.api.v1.game_socket import router as game_socket_router
 from app.api.v1.games import router as games_router
+from app.api.v1.origins import ALLOWED_ORIGINS
 from app.api.v1.pagination import InvalidCursor
 from app.api.v1.users import router as users_router
 
@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 # create_tables()
-ROUTERS = [config_router, games_router, users_router]
+ROUTERS = [config_router, games_router, game_socket_router, users_router]
 # register router with the app
 for router in ROUTERS:
     # attach API routes defined in router files
@@ -143,23 +143,10 @@ def handle_game_full(request: Request, exc: GameFull):
     )
 
 
-# Configure CORS to let frontend's address call the API.
-# Vite serves the frontend on port 5173, and moves to 5174 when 5173 is already in use;
-# the page can also be opened as 127.0.0.1 instead of localhost. All four are allowed by default.
-# Set CORS_ORIGINS (comma-separated) to allow a different frontend address.
-DEFAULT_CORS_ORIGINS = (
-    "http://localhost:5173,http://127.0.0.1:5173,"
-    "http://localhost:5174,http://127.0.0.1:5174"
-)
-CORS_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",")
-    if origin.strip()
-]
-
+# Let the frontend's address call the API. The list of addresses is in app/api/v1/origins.py.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

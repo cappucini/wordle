@@ -12,6 +12,10 @@ vi.mock('./api', async (importOriginal) => {
   const real = await importOriginal()
   return {
     SIGNED_OUT_EVENT: real.SIGNED_OUT_EVENT,
+    SOCKET_CLOSED_NOT_AUTHENTICATED: real.SOCKET_CLOSED_NOT_AUTHENTICATED,
+    SOCKET_CLOSED_NOT_A_PLAYER: real.SOCKET_CLOSED_NOT_A_PLAYER,
+    SOCKET_CLOSED_GAME_NOT_FOUND: real.SOCKET_CLOSED_GAME_NOT_FOUND,
+    openGameSocket: vi.fn(),
     getConfig: vi.fn(),
     getGame: vi.fn(),
     createGame: vi.fn(),
@@ -38,6 +42,7 @@ beforeEach(() => {
   api.login.mockResolvedValue(ERICA)
   api.register.mockResolvedValue(ERICA)
   api.logout.mockResolvedValue(null)
+  api.openGameSocket.mockImplementation(() => ({ close() {} })) // a connection that stays quiet
 })
 
 async function renderSignedIn() {

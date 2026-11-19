@@ -137,6 +137,30 @@ describe('api: what each call sends', () => {
   })
 })
 
+describe('api: the live-update connection', () => {
+  it("opens a WebSocket to the game's address on the backend", () => {
+    const opened = []
+    vi.stubGlobal(
+      'WebSocket',
+      class {
+        constructor(url) {
+          opened.push(url)
+        }
+      },
+    )
+
+    api.openGameSocket('game-1')
+
+    expect(opened).toEqual(['ws://localhost:8000/api/v1/games/game-1/ws'])
+  })
+
+  it('knows the codes the backend closes a refused connection with', () => {
+    expect(api.SOCKET_CLOSED_NOT_AUTHENTICATED).toBe(4401)
+    expect(api.SOCKET_CLOSED_NOT_A_PLAYER).toBe(4403)
+    expect(api.SOCKET_CLOSED_GAME_NOT_FOUND).toBe(4404)
+  })
+})
+
 describe('api: the CSRF token', () => {
   it('is not sent before signing in', async () => {
     await api.createGame(5)
