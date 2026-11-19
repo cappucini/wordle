@@ -218,3 +218,6 @@ __marimo__/
 .vscode/
 # Raw word-list downloads (inputs to backend/scripts/build_word_lists.py)
 backend/scripts/sources/
+
+# Redesign tool working files
+frontend/.hallmark/
