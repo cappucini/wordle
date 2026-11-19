@@ -20,10 +20,10 @@ define run_layer
 	exit $$status
 endef
 
-.PHONY: test test-unit test-frontend test-api test-security test-concurrency
+.PHONY: test test-unit test-frontend test-api test-security test-concurrency test-e2e
 
 # Run every layer, fastest first, stopping at the first layer that fails.
-test: test-unit test-frontend test-api test-security test-concurrency
+test: test-unit test-frontend test-api test-security test-concurrency test-e2e
 
 # Layer 1: backend unit tests (no database, no network).
 test-unit:
@@ -46,3 +46,9 @@ test-security:
 # Layer 4: concurrency tests (many requests at the same instant; same throwaway Postgres).
 test-concurrency:
 	$(call run_layer,api,pytest tests/concurrency)
+
+# Layer 5: end-to-end tests (headless Chromium against the real frontend and backend).
+# A failed test leaves a screenshot, the browser console log and the page source in e2e/artifacts/.
+test-e2e:
+	@$(COMPOSE_TEST) build --quiet e2e-backend e2e-frontend e2e
+	$(call run_layer,e2e,pytest)
