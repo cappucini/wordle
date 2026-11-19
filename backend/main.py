@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from app.words.seed import seed_words_if_empty
 
 from app.domain.errors import (
+    CsrfCheckFailed,
     GameFull,
     GameNotFound,
     GameOver,
@@ -124,6 +125,14 @@ def handle_username_taken(request: Request, exc: UsernameTaken):
 def handle_not_a_player(request: Request, exc: NotAPlayer):
     return JSONResponse(
         status_code=403, content={"code": "NOT_A_PLAYER", "detail": str(exc)}
+    )
+
+
+# a request that changes something, without the session's CSRF token
+@app.exception_handler(CsrfCheckFailed)
+def handle_csrf_check_failed(request: Request, exc: CsrfCheckFailed):
+    return JSONResponse(
+        status_code=403, content={"code": "CSRF_CHECK_FAILED", "detail": str(exc)}
     )
 
 

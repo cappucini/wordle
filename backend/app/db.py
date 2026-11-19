@@ -58,6 +58,9 @@ class AuthSessionRow(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # A second secret for this sign-in. The page must send it back in a header on every
+    # request that changes something, which proves the request came from our own page.
+    csrf_token: Mapped[str | None] = mapped_column(String(64))
 
     user: Mapped["UserRow"] = relationship()
 

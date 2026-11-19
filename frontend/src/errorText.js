@@ -12,6 +12,7 @@ const FRIENDLY_MESSAGES = {
   USERNAME_TAKEN: 'That username is taken. Try another, or sign in.',
   NOT_A_PLAYER: "You're not a player in that game.",
   GAME_FULL: 'That game already has the maximum number of players.',
+  CSRF_CHECK_FAILED: 'This page is out of date. Refresh it and try again.',
   NO_WORDS_AVAILABLE: "The word lists aren't loaded yet. Try again in a moment.",
 }
 
