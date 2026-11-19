@@ -1,25 +1,30 @@
-"""Build the Wordle word-list files. This takes a large English dictionary
-https://github.com/dolph/dictionary to form the list of valid words that someone can guess, all from ENABLE (Enhanced North American Benchmark Lexicon),
-the standard for open-source word games. 
+"""Build the word-list files for 6, 7 and 8-letter games.
 
-The answers are restrictd to be in ENABLE as well as a list of frequent English words pulled from Google, 
-as we want to be fair to 
+The 5-letter files are NOT built here. They are the original Wordle lists, copied in as they
+are (see "Word Lists" in the README), and this script leaves them alone.
+
+For the longer lengths, where no official list exists:
+
+valid_N.txt   - every N-letter word in the ENABLE dictionary (accepted as guesses).
+                ENABLE (Enhanced North American Benchmark Lexicon) is the usual
+                public-domain dictionary for word games: https://github.com/dolph/dictionary
+answers_N.txt - N-letter words that are in ENABLE, are also in a list of common English
+                words, and are not plural (eligible to be chosen as a game's answer).
+                Restricting answers to common words keeps the game fair: any dictionary
+                word can be guessed, but the answer is one a player is likely to know.
 
 Usage: python build_word_lists.py <enable1.txt> <common-words.txt> <output-dir>
        [<proper-names.txt> <system-dictionary.txt>]
 
 The two optional files are used to keep names and places out of the answers:
 on macOS they are /usr/share/dict/propernames and /usr/share/dict/words.
-
-valid_N.txt   - every N-letter word in the ENABLE dictionary (accepted as guesses)
-answers_N.txt - N-letter words that are common, in the dictionary, and not plural
-                (eligible to be chosen as a game's answer)
 """
 import re
 import sys
 from pathlib import Path
 
-MIN_LENGTH = 5
+# 5-letter games use the original Wordle lists, which are not generated (see above)
+MIN_LENGTH = 6
 MAX_LENGTH = 8
 LETTERS_ONLY = re.compile(r"^[a-z]+$")
 
