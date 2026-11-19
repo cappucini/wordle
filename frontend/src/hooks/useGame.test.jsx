@@ -695,3 +695,262 @@ describe("useGame: other players' guesses", () => {
     })
   })
 })
+
+// A fake backend holding a player's games, which pages through them the way the real one
+// does: `limit` games at a time, with a cursor to continue from.
+function serveGames(allGames) {
+  api.listGames.mockImplementation(async (cursor, limit = 10) => {
+    const start = cursor ? Number(cursor) : 0
+    const end = start + limit
+    return {
+      items: allGames.slice(start, end),
+      next_cursor: end < allGames.length ? String(end) : null,
+    }
+  })
+}
+
+function manyGames(count) {
+  return Array.from({ length: count }, (_, index) => makeGame({ id: 'old-' + (index + 1) }))
+}
+
+function listedIds(result) {
+  return result.current.games.map((game) => game.id)
+}
+
+describe('useGame: "Your games" after Show more', () => {
+  async function renderWithTwoPagesShown(allGames) {
+    serveGames(allGames)
+    const result = await renderGame()
+    await waitFor(() => expect(result.current.games).toHaveLength(10))
+    await act(async () => result.current.loadMoreGames())
+    expect(result.current.games).toHaveLength(20)
+    return result
+  }
+
+  it('keeps the extra pages when a guess refreshes the list', async () => {
+    const allGames = manyGames(25)
+    const result = await renderWithTwoPagesShown(allGames)
+    await act(() => result.current.startGame())
+    api.getGame.mockResolvedValue(makeGame({ id: 'game-1', guesses: [makeGuess('slate', 'AACAC')] }))
+
+    await type(result, 'slate')
+    await press(result, 'Enter')
+
+    expect(listedIds(result)).toEqual(allGames.slice(0, 20).map((game) => game.id))
+    expect(result.current.hasMoreGames).toBe(true)
+  })
+
+  it('puts a new game at the top without dropping back to one page', async () => {
+    const allGames = manyGames(25)
+    const result = await renderWithTwoPagesShown(allGames)
+    allGames.unshift(NEW_GAME) // the backend lists the newest game first
+
+    await act(() => result.current.startGame())
+
+    expect(result.current.games).toHaveLength(20)
+    expect(listedIds(result)[0]).toBe('game-1')
+    expect(listedIds(result).slice(1)).toEqual(allGames.slice(1, 20).map((game) => game.id))
+    // the game pushed off the end is still reachable
+    expect(result.current.hasMoreGames).toBe(true)
+  })
+
+  it('still shows one page when the player never asked for more', async () => {
+    serveGames(manyGames(25))
+    const result = await renderGame()
+    await waitFor(() => expect(result.current.games).toHaveLength(10))
+
+    await act(() => result.current.startGame())
+
+    expect(result.current.games).toHaveLength(10)
+  })
+
+  it('adds the next page once when "Show more" is double-clicked', async () => {
+    const allGames = manyGames(25)
+    serveGames(allGames)
+    const result = await renderGame()
+    await waitFor(() => expect(result.current.games).toHaveLength(10))
+
+    await act(async () => {
+      result.current.loadMoreGames()
+      result.current.loadMoreGames()
+    })
+
+    expect(listedIds(result)).toEqual(allGames.slice(0, 20).map((game) => game.id))
+    const requestsForMore = api.listGames.mock.calls.filter(([cursor]) => cursor)
+    expect(requestsForMore).toHaveLength(1)
+  })
+
+  it('can load a third page after the second', async () => {
+    const allGames = manyGames(25)
+    const result = await renderWithTwoPagesShown(allGames)
+
+    await act(async () => result.current.loadMoreGames())
+
+    expect(listedIds(result)).toEqual(allGames.map((game) => game.id))
+    expect(result.current.hasMoreGames).toBe(false)
+  })
+
+  it('never lists a game twice when the list refreshes while the next page is loading', async () => {
+    const allGames = manyGames(25)
+    serveGames(allGames)
+    const result = await renderGame()
+    await waitFor(() => expect(result.current.games).toHaveLength(10))
+
+    await act(async () => {
+      result.current.loadMoreGames()
+      await result.current.startGame() // refreshes the list while page two is on its way
+    })
+
+    expect(new Set(listedIds(result)).size).toBe(result.current.games.length)
+  })
+
+  it('"Show more" works again after a request for more fails', async () => {
+    const allGames = manyGames(25)
+    serveGames(allGames)
+    const result = await renderGame()
+    await waitFor(() => expect(result.current.games).toHaveLength(10))
+    api.listGames.mockRejectedValueOnce(apiError('NETWORK_ERROR'))
+    await act(async () => result.current.loadMoreGames())
+    expect(result.current.games).toHaveLength(10)
+
+    await act(async () => result.current.loadMoreGames())
+
+    expect(result.current.games).toHaveLength(20)
+  })
+})
+
+describe('useGame: a slow answer never replaces the game on screen', () => {
+  // a request the test finishes by hand, to control which answer arrives last
+  function pending() {
+    let finish
+    const promise = new Promise((resolve, reject) => {
+      finish = { with: resolve, failingWith: reject }
+    })
+    return { promise, finish }
+  }
+
+  it('stays on the new game when a linked game finishes loading afterwards', async () => {
+    window.history.replaceState({}, '', '/?game=linked')
+    const slowJoin = pending()
+    api.joinGame.mockReturnValue(slowJoin.promise)
+    api.createGame.mockResolvedValue(makeGame({ id: 'brand-new' }))
+    const result = await renderGame()
+
+    await act(() => result.current.startGame()) // clicked before the linked game arrived
+    await act(async () => slowJoin.finish.with(makeGame({ id: 'linked' })))
+
+    expect(result.current.game.id).toBe('brand-new')
+    expect(window.location.search).toBe('?game=brand-new')
+    expect(result.current.isLoadingGame).toBe(false)
+  })
+
+  it('does not show an error from a linked game that failed after a new game started', async () => {
+    window.history.replaceState({}, '', '/?game=linked')
+    const slowJoin = pending()
+    api.joinGame.mockReturnValue(slowJoin.promise)
+    api.createGame.mockResolvedValue(makeGame({ id: 'brand-new' }))
+    const result = await renderGame()
+
+    await act(() => result.current.startGame())
+    await act(async () => slowJoin.finish.failingWith(apiError('GAME_FULL')))
+
+    expect(result.current.game.id).toBe('brand-new')
+    expect(result.current.message).toBe('')
+    expect(window.location.search).toBe('?game=brand-new')
+  })
+
+  it('stays on the game picked from the list when a slower "New game" finishes afterwards', async () => {
+    const slowCreate = pending()
+    api.createGame.mockReturnValue(slowCreate.promise)
+    api.joinGame.mockResolvedValue(makeGame({ id: 'picked' }))
+    const result = await renderGame()
+
+    await act(async () => {
+      result.current.startGame()
+    })
+    await act(async () => result.current.openGame('picked')) // the player's latest choice
+    await act(async () => slowCreate.finish.with(makeGame({ id: 'brand-new' })))
+
+    expect(result.current.game.id).toBe('picked')
+    expect(window.location.search).toBe('?game=picked')
+  })
+
+  it('stays on game B when the reload after a guess in game A arrives late', async () => {
+    api.createGame.mockResolvedValue(makeGame({ id: 'A' }))
+    const result = await renderStartedGame()
+    await type(result, 'slate')
+    const slowReload = pending()
+    api.getGame.mockReturnValue(slowReload.promise)
+    api.joinGame.mockResolvedValue(makeGame({ id: 'B' }))
+
+    await act(async () => {
+      result.current.pressKey('Enter')
+    })
+    await act(async () => result.current.openGame('B'))
+    await type(result, 'cr') // already typing in game B
+    await act(async () => slowReload.finish.with(makeGame({ id: 'A', guesses: [makeGuess('slate', 'AACAC')] })))
+
+    expect(result.current.game.id).toBe('B')
+    expect(window.location.search).toBe('?game=B')
+    expect(result.current.typedWord).toBe('cr')
+  })
+
+  it('does not wipe what is being typed in game B when the guess in game A is saved late', async () => {
+    api.createGame.mockResolvedValue(makeGame({ id: 'A' }))
+    const result = await renderStartedGame()
+    await type(result, 'slate')
+    const slowGuess = pending()
+    api.submitGuess.mockReturnValue(slowGuess.promise)
+    api.joinGame.mockResolvedValue(makeGame({ id: 'B' }))
+
+    await act(async () => {
+      result.current.pressKey('Enter')
+    })
+    await act(async () => result.current.openGame('B'))
+    await act(async () => slowGuess.finish.with({}))
+
+    expect(result.current.game.id).toBe('B')
+    // game B can be played straight away: the finished guess released the keyboard
+    await type(result, 'cr')
+    expect(result.current.typedWord).toBe('cr')
+  })
+
+  it('does not show game A\'s rejected word on game B', async () => {
+    api.createGame.mockResolvedValue(makeGame({ id: 'A' }))
+    const result = await renderStartedGame()
+    await type(result, 'zzzzz')
+    const slowGuess = pending()
+    api.submitGuess.mockReturnValue(slowGuess.promise)
+    api.joinGame.mockResolvedValue(makeGame({ id: 'B' }))
+
+    await act(async () => {
+      result.current.pressKey('Enter')
+    })
+    await act(async () => result.current.openGame('B'))
+    await act(async () => slowGuess.finish.failingWith(apiError('INVALID_GUESS', "'zzzzz' is not in the word list")))
+
+    expect(result.current.game.id).toBe('B')
+    expect(result.current.message).toBe('')
+    expect(result.current.rowHasProblem).toBe(false)
+  })
+
+  it('stays on game B when game A turns out to be over', async () => {
+    api.createGame.mockResolvedValue(makeGame({ id: 'A' }))
+    const result = await renderStartedGame()
+    await type(result, 'slate')
+    const slowGuess = pending()
+    api.submitGuess.mockReturnValue(slowGuess.promise)
+    api.getGame.mockResolvedValue(makeGame({ id: 'A', status: 'won', answer: 'crane' }))
+    api.joinGame.mockResolvedValue(makeGame({ id: 'B' }))
+
+    await act(async () => {
+      result.current.pressKey('Enter')
+    })
+    await act(async () => result.current.openGame('B'))
+    await act(async () => slowGuess.finish.failingWith(apiError('GAME_OVER')))
+
+    expect(result.current.game.id).toBe('B')
+    expect(result.current.game.status).toBe('in_progress')
+    expect(result.current.message).toBe('')
+  })
+})

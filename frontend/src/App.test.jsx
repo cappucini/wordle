@@ -7,14 +7,12 @@ import * as api from './api'
 import App from './App'
 import { CONFIG, ERICA, apiError, makeGame, makeGuess } from './test/factories'
 
-// keep the real SIGNED_OUT_EVENT name; replace every function that would call the backend
+// keep api.js's constants; replace every function that would call the backend
 vi.mock('./api', async (importOriginal) => {
   const real = await importOriginal()
   return {
-    SIGNED_OUT_EVENT: real.SIGNED_OUT_EVENT,
-    SOCKET_CLOSED_NOT_AUTHENTICATED: real.SOCKET_CLOSED_NOT_AUTHENTICATED,
-    SOCKET_CLOSED_NOT_A_PLAYER: real.SOCKET_CLOSED_NOT_A_PLAYER,
-    SOCKET_CLOSED_GAME_NOT_FOUND: real.SOCKET_CLOSED_GAME_NOT_FOUND,
+    // every constant api.js exports (event names, close codes, page sizes) keeps its real value
+    ...Object.fromEntries(Object.entries(real).filter(([, value]) => typeof value !== 'function')),
     openGameSocket: vi.fn(),
     getConfig: vi.fn(),
     getGame: vi.fn(),

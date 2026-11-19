@@ -117,8 +117,12 @@ export function submitGuess(gameId, word) {
 
 // One page of the signed-in user's games, newest first.
 // Pass the next_cursor from the previous page to get the following one.
-export function listGames(cursor) {
-  let path = '/games?limit=10'
+// `limit` is how many games to return; the backend allows up to MAX_GAMES_PAGE_SIZE.
+export const GAMES_PAGE_SIZE = 10
+export const MAX_GAMES_PAGE_SIZE = 100
+
+export function listGames(cursor, limit = GAMES_PAGE_SIZE) {
+  let path = '/games?limit=' + limit
   if (cursor) {
     path += '&cursor=' + encodeURIComponent(cursor)
   }

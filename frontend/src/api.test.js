@@ -98,6 +98,12 @@ describe('api: what each call sends', () => {
     expect(lastRequest()).toMatchObject({ url: API + '/games?limit=10', method: 'GET' })
   })
 
+  it('can ask for more than ten games at once, to refresh a list that has been expanded', async () => {
+    await api.listGames(null, 30)
+
+    expect(lastRequest().url).toBe(API + '/games?limit=30')
+  })
+
   it('lists the next page with the cursor made safe for a URL', async () => {
     await api.listGames('abc+/=')
 
