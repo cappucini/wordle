@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from tests.support import API, PASSWORD, SESSION_COOKIE
+from tests.support import API, PASSWORD, SESSION_COOKIE, put_session_cookie
 
 SEVEN_DAYS_IN_SECONDS = 7 * 24 * 60 * 60
 
@@ -174,8 +174,7 @@ def test_log_in_does_not_adopt_a_cookie_the_browser_already_had(client, new_clie
     # victim to sign in. The server must issue its own value and never honour the planted one.
     sign_up(new_client())
     planted = "attacker-chosen-value-0123456789012345678901234"
-    # same domain and path as the server's own cookie, so this is the cookie it would replace
-    client.cookies.set(SESSION_COOKIE, planted, domain="testserver.local", path="/")
+    put_session_cookie(client, planted)
 
     response = log_in(client)
 
@@ -183,7 +182,7 @@ def test_log_in_does_not_adopt_a_cookie_the_browser_already_had(client, new_clie
 
     assert client.cookies.get(SESSION_COOKIE) != planted
     attacker = new_client()
-    attacker.cookies.set(SESSION_COOKIE, planted)
+    put_session_cookie(attacker, planted)
     assert attacker.get(f"{API}/users/me").status_code == 401
 
 
@@ -192,15 +191,15 @@ def test_one_users_session_cannot_be_used_as_another_user(player, other_player):
     assert other_player.get("/users/me").json()["user"]["id"] == other_player.id
 
 
-def test_session_cookie_copied_after_log_out_no_longer_works(player, new_client):
-    token = player.client.cookies.get(SESSION_COOKIE)
+def test_session_cookie_copied_before_log_out_stops_working_after_it(player, new_client):
+    thief = player.in_another_browser(new_client())
+    assert thief.get("/users/me").status_code == 200  # the copy works while signed in
+
     player.delete("/sessions/current")
 
-    thief = new_client()
-    thief.cookies.set(SESSION_COOKIE, token)
-
-    assert thief.get(f"{API}/users/me").status_code == 401
-    assert thief.get(f"{API}/games").status_code == 401
+    assert thief.get("/users/me").status_code == 401
+    assert thief.get("/games").status_code == 401
+    assert thief.post("/games", json={"word_length": 5}).status_code == 401
 
 
 # ---------- log in gives nothing away ----------

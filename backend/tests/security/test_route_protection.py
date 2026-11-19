@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import pytest
 from main import app
-from tests.support import CSRF_HEADER
+from tests.support import CSRF_HEADER, put_session_cookie
 
 # Routes a visitor may call without signing in.
 PUBLIC_ROUTES = {
@@ -60,7 +60,7 @@ def test_route_refuses_a_visitor_who_is_not_signed_in(client, method, path):
 
 @pytest.mark.parametrize("method, path", PROTECTED_ROUTES)
 def test_route_refuses_a_made_up_session_cookie(client, method, path):
-    client.cookies.set("wordle_session", "x" * 43)
+    put_session_cookie(client, "x" * 43)
 
     response = client.request(method, fill(path), json=BODY)
 

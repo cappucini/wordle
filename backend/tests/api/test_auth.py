@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from tests.support import API, CSRF_HEADER, PASSWORD, SESSION_COOKIE
+from tests.support import API, CSRF_HEADER, PASSWORD, SESSION_COOKIE, put_session_cookie
 
 NOT_AUTHENTICATED = {"code": "NOT_AUTHENTICATED", "detail": "Sign in to continue"}
 INVALID_CREDENTIALS = {"code": "INVALID_CREDENTIALS", "detail": "Wrong username or password"}
@@ -190,7 +190,7 @@ def test_no_session_cookie_is_not_authenticated(client):
 
 
 def test_unknown_session_cookie_is_not_authenticated(client):
-    client.cookies.set(SESSION_COOKIE, "a-token-this-server-never-issued")
+    put_session_cookie(client, "a-token-this-server-never-issued")
 
     response = client.get(f"{API}/users/me")
 
@@ -270,14 +270,15 @@ def test_log_out_ends_the_session(player):
     assert player.get("/users/me").status_code == 401
 
 
-def test_log_out_ends_the_session_on_the_server_not_just_the_cookie(player):
-    token = player.client.cookies.get(SESSION_COOKIE)
+def test_log_out_ends_the_session_on_the_server_not_just_the_cookie(player, new_client):
+    # someone who copied the cookie while it was valid...
+    copy = player.in_another_browser(new_client())
+    assert copy.get("/users/me").status_code == 200
+
     player.delete("/sessions/current")
 
-    # put the old cookie back, as someone who had copied it would
-    player.client.cookies.set(SESSION_COOKIE, token)
-
-    assert player.get("/users/me").status_code == 401
+    # ...cannot keep using it once the player has logged out
+    assert copy.get("/users/me").status_code == 401
 
 
 def test_log_out_leaves_the_users_other_sessions_signed_in(player, client):

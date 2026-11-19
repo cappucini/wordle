@@ -22,6 +22,12 @@ CSRF_HEADER = "X-CSRF-Token"
 SESSION_COOKIE = "wordle_session"
 
 
+def put_session_cookie(client: TestClient, token: str) -> None:
+    """Gives a client a session cookie, with the same domain and path the server uses,
+    so it replaces any cookie the client already has instead of sitting beside it."""
+    client.cookies.set(SESSION_COOKIE, token, domain="testserver.local", path="/")
+
+
 class Player:
     """A signed-in user with their own HTTP client, so each player has their own cookies.
 
@@ -35,6 +41,16 @@ class Player:
         self.password = password
         self.id = auth_body["user"]["id"]
         self.csrf_token = auth_body["csrf_token"]
+
+    @property
+    def session_token(self) -> str:
+        return self.client.cookies.get(SESSION_COOKIE)
+
+    def in_another_browser(self, client: TestClient) -> "Player":
+        """The same sign-in used from a second client, as if the cookie had been copied there."""
+        put_session_cookie(client, self.session_token)
+        body = {"user": {"id": self.id}, "csrf_token": self.csrf_token}
+        return Player(client, self.username, self.password, body)
 
     @property
     def csrf(self) -> dict:
