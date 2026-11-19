@@ -173,3 +173,40 @@ def test_forgive_with_nothing_counted_does_nothing():
     limiter.forgive("erica")
 
     assert limiter.attempt("erica") == 0
+
+
+# ---------- limits read from settings ----------
+
+
+def test_a_limit_uses_its_default_when_no_setting_is_given():
+    from app.api.v1.rate_limits import limit_from_environment
+
+    assert limit_from_environment("MAX_SIGNUPS_PER_ADDRESS", 20, environ={}) == 20
+
+
+def test_a_limit_can_be_set_from_the_environment():
+    from app.api.v1.rate_limits import limit_from_environment
+
+    environ = {"MAX_SIGNUPS_PER_ADDRESS": "1000"}
+
+    assert limit_from_environment("MAX_SIGNUPS_PER_ADDRESS", 20, environ=environ) == 1000
+
+
+def test_a_setting_that_is_not_a_positive_whole_number_stops_the_server_starting():
+    import pytest
+
+    from app.api.v1.rate_limits import limit_from_environment
+
+    for bad in ["", "ten", "0", "-5", "2.5"]:
+        with pytest.raises(ValueError, match="MAX_SIGNUPS_PER_ADDRESS"):
+            limit_from_environment("MAX_SIGNUPS_PER_ADDRESS", 20, environ={"MAX_SIGNUPS_PER_ADDRESS": bad})
+
+
+def test_the_limits_in_force_are_the_documented_defaults():
+    # the test stack sets none of the settings, so these are what production gets too
+    from app.api.v1 import rate_limits
+
+    assert rate_limits.failed_logins_by_username.max_attempts == 10
+    assert rate_limits.failed_logins_by_address.max_attempts == 30
+    assert rate_limits.signups_by_address.max_attempts == 20
+    assert rate_limits.refused_signups_by_address.max_attempts == 30

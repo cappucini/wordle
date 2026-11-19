@@ -1,7 +1,13 @@
 // errorText.js and gameUrl.js: the two small modules with no React in them.
 import { describe, expect, it } from 'vitest'
 import { errorText } from './errorText'
-import { clearGameIdFromUrl, getGameIdFromUrl, setGameIdInUrl } from './gameUrl'
+import {
+  clearGameIdFromUrl,
+  getGameIdFromUrl,
+  getUserWhoOpenedGameInUrl,
+  markGameInUrlAsOpenedBy,
+  setGameIdInUrl,
+} from './gameUrl'
 import { apiError } from './test/factories'
 
 describe('errorText', () => {
@@ -88,6 +94,37 @@ describe('gameUrl', () => {
     expect(getGameIdFromUrl()).toBeNull()
     expect(window.location.search).toBe('')
     expect(window.history.length).toBe(before)
+  })
+
+  it('records which player opened a game', () => {
+    setGameIdInUrl('abc-123', 'user-erica')
+
+    expect(getUserWhoOpenedGameInUrl()).toBe('user-erica')
+  })
+
+  it('knows a freshly opened link was opened by nobody yet', () => {
+    window.history.replaceState(null, '', '/?game=abc-123')
+
+    expect(getUserWhoOpenedGameInUrl()).toBeNull()
+  })
+
+  it('can mark the game already in the address without adding a history entry', () => {
+    window.history.replaceState(null, '', '/?game=abc-123')
+    const before = window.history.length
+
+    markGameInUrlAsOpenedBy('user-erica')
+
+    expect(getUserWhoOpenedGameInUrl()).toBe('user-erica')
+    expect(window.location.search).toBe('?game=abc-123')
+    expect(window.history.length).toBe(before)
+  })
+
+  it('forgets who opened the game when the game is removed from the address', () => {
+    setGameIdInUrl('abc-123', 'user-erica')
+
+    clearGameIdFromUrl()
+
+    expect(getUserWhoOpenedGameInUrl()).toBeNull()
   })
 
   it('leaves the rest of the address alone', () => {

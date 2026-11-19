@@ -127,6 +127,14 @@ class GameWatchers:
         for watcher in closing:
             _run(watcher, _close(watcher.websocket, CLOSE_NOT_AUTHENTICATED))
 
+    def extend_session(self, session_hash: str, expires_at: datetime) -> None:
+        """A sign-in was extended: its open connections now last until the new time too."""
+        with self._lock:
+            for watching in self._watchers.values():
+                for watcher in watching:
+                    if watcher.session_hash == session_hash:
+                        watcher.expires_at = expires_at
+
     def _drop(self, game_id: UUID, should_drop) -> None:
         """Removes the matching connections from a game. The caller holds the lock."""
         remaining = [

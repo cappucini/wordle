@@ -194,3 +194,20 @@ def test_one_user_can_only_hold_so_many_connections():
         assert watch(watchers, OTHER_GAME, FakeSocket()) is True  # room again
 
     asyncio.run(scenario())
+
+
+def test_a_connection_lasts_as_long_as_its_session_when_the_session_is_extended():
+    async def scenario():
+        watchers = GameWatchers()
+        socket = FakeSocket()
+        watch(watchers, GAME, socket, session="extended", expires_at=LAST_WEEK)
+
+        # the player used the site, so the sign-in was pushed out before anything checked it
+        watchers.extend_session("extended", NEXT_WEEK)
+        await notify_from_another_thread(watchers, GAME)
+        await received(socket)
+
+        assert socket.sent == [GAME_UPDATED]
+        assert socket.closed_with is None
+
+    asyncio.run(scenario())

@@ -39,7 +39,7 @@ function GameScreen({ user, onSignOut }) {
     loadMoreGames,
     // switches to another game from the list
     openGame,
-  } = useGame()
+  } = useGame(user)
 
   if (config === null) {
     return <p className="message">{message || 'Loading...'}</p>

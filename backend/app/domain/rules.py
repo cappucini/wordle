@@ -14,7 +14,10 @@ MAX_USERNAME_LENGTH = 20
 USERNAME_PATTERN = r"^[a-z0-9_]+$"  # lowercase letters, digits and underscores
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
-SESSION_DAYS = 7  # how long a sign-in stays valid
+SESSION_DAYS = 7  # how long a sign-in stays valid after it was last extended
+# A sign-in in use is extended to the full SESSION_DAYS again, but at most this often,
+# so an active player stays signed in without every request writing to the database.
+SESSION_RENEW_AFTER_DAYS = 1
 
 # Limits on log-in and sign-up attempts (see app/api/v1/rate_limits.py)
 RATE_LIMIT_WINDOW_SECONDS = 5 * 60  # attempts are counted over the last five minutes

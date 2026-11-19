@@ -8,6 +8,7 @@ from app import user_service
 from app.db import AuthSessionRow, UserRow, get_session
 from app.domain.errors import CsrfCheckFailed, NotAuthenticated
 from app.domain.rules import SESSION_DAYS
+from app.live import watchers
 
 # How a signed-in browser is recognised:
 #
@@ -50,9 +51,17 @@ def get_token(wordle_session: str | None = Cookie(default=None)) -> str:
 
 
 def get_auth_session(
-    token: str = Depends(get_token), session: Session = Depends(get_session)
+    response: Response,
+    token: str = Depends(get_token),
+    session: Session = Depends(get_session),
 ) -> AuthSessionRow:
-    return user_service.get_auth_session(session, token)
+    auth_session = user_service.get_auth_session(session, token)
+    # A sign-in that is being used is kept alive: once a day its expiry is pushed back out
+    # to the full length, and the cookie and any open live connections are renewed to match.
+    if user_service.renew_session_if_due(session, auth_session):
+        set_session_cookie(response, token)
+        watchers.extend_session(auth_session.token_hash, auth_session.expires_at)
+    return auth_session
 
 
 def get_current_user(

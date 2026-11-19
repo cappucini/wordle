@@ -142,6 +142,18 @@ ws://localhost:8000/api/v1/games/{game_id}/ws
   channel (for example Postgres `LISTEN`/`NOTIFY`) so a guess handled by one reaches pages
   connected to another.
 
+### Staying signed in
+
+A sign-in lasts 7 days and is extended while it is being used: once a day, a request from a
+signed-in player pushes the expiry back out to 7 days from then. A player who keeps playing
+stays signed in; one who stops is signed out 7 days after their last visit. Logging in again
+in a browser that is already signed in ends the session it replaces.
+
+Each game address the page puts in the browser's history records which player opened it. A
+link nobody has opened yet joins you to the game. An address left behind by a different
+player on the same browser (reached with Back, or still in the address bar when their
+sign-in ended) does not: the game is only shown if you are already one of its players.
+
 ### Limits on log-in and sign-up
 
 To slow down password guessing, the backend counts attempts over the last five minutes and
@@ -155,8 +167,13 @@ answers `429 TOO_MANY_ATTEMPTS` (with a `Retry-After` header) once a limit is re
 | Sign-ups refused because the username was taken, from one network address | 30 |
 
 Each attempt is counted before it is carried out, so the limits also hold when many requests
-arrive at the same instant. A successful log-in clears that username's count. The numbers are in
-`backend/app/domain/rules.py`.
+arrive at the same instant. A successful log-in clears that username's count.
+
+The numbers are in `backend/app/domain/rules.py`. Each can be changed without editing code by
+setting an environment variable on the backend: `MAX_FAILED_LOGINS_PER_USERNAME`,
+`MAX_FAILED_LOGINS_PER_ADDRESS`, `MAX_SIGNUPS_PER_ADDRESS` or
+`MAX_REFUSED_SIGNUPS_PER_ADDRESS`. The end-to-end test stack raises the sign-up limit this
+way, because all its browsers sign up from one address within seconds.
 
 - The counts are kept in the backend's memory, so they reset when it restarts.
 - The address is the one the connection comes from. Behind a reverse proxy that is the
@@ -259,13 +276,13 @@ Run these from the repository root.
 
 | Command | What it runs | Tests | Takes about |
 |---|---|---|---|
-| `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 237 | 2 s |
-| `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 234 | 4 s |
-| `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres. | 168 | 9 s |
+| `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 242 | 2 s |
+| `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 247 | 4 s |
+| `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres. | 173 | 9 s |
 | `make test-security` | Security tests: sign-in and CSRF on every route, who may open the WebSocket, log-in and sign-up limits, hashed secrets, game access, the hidden answer, hostile input. | 217 | 17 s |
 | `make test-concurrency` | Race tests: joins, guesses and sign-ups sent at the same instant. | 8 | 5 s |
 | `make test-e2e` | End-to-end tests: headless Chromium driving the real frontend and backend through seven user journeys. | 7 | 20 s |
-| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 871 | 60 s |
+| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 894 | 60 s |
 
 The first run of a layer is slower, because Docker builds its image.
 

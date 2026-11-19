@@ -9,7 +9,8 @@ What is limited, and why:
     form being used to find out which usernames exist.
 
 Being over a limit answers 429 TOO_MANY_ATTEMPTS (see main.py) until enough time has passed.
-The numbers are in app/domain/rules.py.
+The numbers are in app/domain/rules.py; each can be overridden by an environment variable
+of the same name (see limit_from_environment below).
 
 How an attempt is counted
 -------------------------
@@ -26,6 +27,8 @@ Things to know:
     logging in. They cannot end a session the player already has.
 """
 
+import os
+
 from fastapi import Request
 
 from app.domain.errors import TooManyAttempts
@@ -38,15 +41,35 @@ from app.domain.rules import (
 )
 from app.rate_limit import AttemptLimiter
 
-failed_logins_by_username = AttemptLimiter(
-    MAX_FAILED_LOGINS_PER_USERNAME, RATE_LIMIT_WINDOW_SECONDS
+def limit_from_environment(name: str, default: int, environ=os.environ) -> int:
+    """A limit's number: the environment variable of that name if set, otherwise the default.
+
+    The defaults are what the app runs with. The setting exists for deployments that need
+    different numbers, and for the browser tests, which create more accounts from one
+    address in a few seconds than any real visitor would. A value that is not a positive
+    whole number stops the server from starting, rather than quietly running unlimited.
+    """
+    raw = environ.get(name)
+    if raw is None:
+        return default
+    if not raw.isdecimal() or int(raw) < 1:
+        raise ValueError(f"{name} must be a positive whole number, not {raw!r}")
+    return int(raw)
+
+
+def _limiter(name: str, default: int) -> AttemptLimiter:
+    return AttemptLimiter(limit_from_environment(name, default), RATE_LIMIT_WINDOW_SECONDS)
+
+
+failed_logins_by_username = _limiter(
+    "MAX_FAILED_LOGINS_PER_USERNAME", MAX_FAILED_LOGINS_PER_USERNAME
 )
-failed_logins_by_address = AttemptLimiter(
-    MAX_FAILED_LOGINS_PER_ADDRESS, RATE_LIMIT_WINDOW_SECONDS
+failed_logins_by_address = _limiter(
+    "MAX_FAILED_LOGINS_PER_ADDRESS", MAX_FAILED_LOGINS_PER_ADDRESS
 )
-signups_by_address = AttemptLimiter(MAX_SIGNUPS_PER_ADDRESS, RATE_LIMIT_WINDOW_SECONDS)
-refused_signups_by_address = AttemptLimiter(
-    MAX_REFUSED_SIGNUPS_PER_ADDRESS, RATE_LIMIT_WINDOW_SECONDS
+signups_by_address = _limiter("MAX_SIGNUPS_PER_ADDRESS", MAX_SIGNUPS_PER_ADDRESS)
+refused_signups_by_address = _limiter(
+    "MAX_REFUSED_SIGNUPS_PER_ADDRESS", MAX_REFUSED_SIGNUPS_PER_ADDRESS
 )
 
 ALL_LIMITERS = [

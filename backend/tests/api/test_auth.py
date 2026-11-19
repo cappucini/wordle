@@ -251,6 +251,69 @@ def test_session_that_has_not_expired_yet_still_works(player, db):
     assert player.get("/users/me").status_code == 200
 
 
+# ---------- a sign-in is extended while the player keeps using it ----------
+
+
+def session_expiry(db):
+    from app.db import AuthSessionRow
+
+    db.expire_all()
+    return db.query(AuthSessionRow).one().expires_at
+
+
+def test_session_used_after_a_day_is_extended_to_seven_days_from_now(player, db):
+    # signed in two days ago: five of the seven days are left
+    set_session_expiry(db, datetime.now(timezone.utc) + timedelta(days=5))
+
+    response = player.get("/users/me")
+
+    assert response.status_code == 200
+    remaining = session_expiry(db) - datetime.now(timezone.utc)
+    assert abs(remaining - timedelta(days=7)) < timedelta(seconds=5)
+    # the browser's copy of the cookie is renewed to match
+    assert "wordle_session=" in response.headers["set-cookie"]
+    assert "Max-Age=604800" in response.headers["set-cookie"]
+    assert "HttpOnly" in response.headers["set-cookie"]
+
+
+def test_extended_session_keeps_the_same_token_and_csrf_token(player, db):
+    token_before = player.session_token
+    set_session_expiry(db, datetime.now(timezone.utc) + timedelta(days=5))
+
+    body = player.get("/users/me").json()
+
+    assert player.session_token == token_before
+    assert body["csrf_token"] == player.csrf_token
+    assert player.post("/games", json={"word_length": 5}).status_code == 201
+
+
+def test_any_signed_in_request_extends_the_session(player, db):
+    set_session_expiry(db, datetime.now(timezone.utc) + timedelta(days=3))
+
+    player.get("/games")
+
+    assert session_expiry(db) - datetime.now(timezone.utc) > timedelta(days=6, hours=23)
+
+
+def test_session_used_again_within_a_day_is_left_alone(player, db):
+    # extended (or created) twelve hours ago; no need to write to the database on every request
+    almost_new = datetime.now(timezone.utc) + timedelta(days=6, hours=12)
+    set_session_expiry(db, almost_new)
+
+    response = player.get("/users/me")
+
+    assert response.status_code == 200
+    assert session_expiry(db) == almost_new
+    assert "set-cookie" not in response.headers
+
+
+def test_an_expired_session_is_not_brought_back(player, db):
+    set_session_expiry(db, datetime.now(timezone.utc) - timedelta(seconds=1))
+
+    assert player.get("/users/me").status_code == 401
+    assert player.get("/users/me").status_code == 401
+
+
 def test_new_session_lasts_seven_days(player, db):
     from app.db import AuthSessionRow
 

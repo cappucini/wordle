@@ -27,7 +27,7 @@ afterEach(() => {
 
 // Renders the hook and waits until it has loaded the rules.
 async function renderGame() {
-  const rendered = renderHook(() => useGame())
+  const rendered = renderHook(() => useGame(ERICA))
   await waitFor(() => expect(rendered.result.current.config).not.toBeNull())
   return rendered.result
 }
@@ -63,7 +63,7 @@ describe('useGame: loading', () => {
   it('shows a message when the rules cannot be loaded', async () => {
     api.getConfig.mockRejectedValue(apiError('NETWORK_ERROR'))
 
-    const { result } = renderHook(() => useGame())
+    const { result } = renderHook(() => useGame(ERICA))
 
     await waitFor(() => expect(result.current.message).toBe("Can't reach the game server. Is it running?"))
     expect(result.current.config).toBeNull()
@@ -471,7 +471,7 @@ describe("useGame: other players' guesses", () => {
   it('asks for nothing while the server is silent', async () => {
     vi.useFakeTimers()
     api.createGame.mockResolvedValue(SHARED)
-    const { result } = renderHook(() => useGame())
+    const { result } = renderHook(() => useGame(ERICA))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
@@ -556,7 +556,7 @@ describe("useGame: other players' guesses", () => {
 
   it('closes the connection when the page goes away', async () => {
     api.createGame.mockResolvedValue(SHARED)
-    const rendered = renderHook(() => useGame())
+    const rendered = renderHook(() => useGame(ERICA))
     await waitFor(() => expect(rendered.result.current.config).not.toBeNull())
     await act(() => rendered.result.current.startGame())
     const socket = latestSocket()
@@ -583,7 +583,7 @@ describe("useGame: other players' guesses", () => {
     async function renderSharedGameWithFakeClock() {
       vi.useFakeTimers()
       api.createGame.mockResolvedValue(SHARED)
-      const { result } = renderHook(() => useGame())
+      const { result } = renderHook(() => useGame(ERICA))
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0) // let the rules and the games list arrive
       })
@@ -657,7 +657,7 @@ describe("useGame: other players' guesses", () => {
     it('does not reconnect after the page has gone away', async () => {
       vi.useFakeTimers()
       api.createGame.mockResolvedValue(SHARED)
-      const rendered = renderHook(() => useGame())
+      const rendered = renderHook(() => useGame(ERICA))
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0)
       })
@@ -704,7 +704,7 @@ describe("useGame: other players' guesses", () => {
       it('checks every five seconds when a connection can never be made at all', async () => {
         vi.useFakeTimers()
         api.createGame.mockResolvedValue(SHARED)
-        const { result } = renderHook(() => useGame())
+        const { result } = renderHook(() => useGame(ERICA))
         await act(async () => {
           await vi.advanceTimersByTimeAsync(0)
         })
@@ -733,7 +733,7 @@ describe("useGame: other players' guesses", () => {
       it('stops checking when the page goes away', async () => {
         vi.useFakeTimers()
         api.createGame.mockResolvedValue(SHARED)
-        const rendered = renderHook(() => useGame())
+        const rendered = renderHook(() => useGame(ERICA))
         await act(async () => {
           await vi.advanceTimersByTimeAsync(0)
         })
@@ -772,16 +772,28 @@ describe("useGame: other players' guesses", () => {
       expect(api.getGame).not.toHaveBeenCalled()
     })
 
-    it('does not retry when the sign-in has ended, and lets the page find that out', async () => {
+    it('checks at once when the server says the sign-in has ended', async () => {
       await renderSharedGameWithFakeClock()
       api.getGame.mockRejectedValue(apiError('NOT_AUTHENTICATED'))
 
       await latestSocket().serverCloses(4401)
-      await wait(60_000)
 
-      expect(FakeSocket.opened).toHaveLength(1)
-      // this request is what makes api.js send the player back to the sign-in form
+      // If the sign-in really has ended, this request gets a 401 and api.js sends the
+      // player back to the sign-in form, which takes this whole screen away.
       expect(api.getGame).toHaveBeenCalledExactlyOnceWith('game-1')
+    })
+
+    it('reconnects after a 4401 if the sign-in turns out to be fine', async () => {
+      // the server closes a connection at the expiry time it knew when the connection
+      // opened; a sign-in that was extended since then is still good
+      const result = await renderSharedGameWithFakeClock()
+      api.getGame.mockResolvedValue(WITH_SAMS_GUESS)
+
+      await latestSocket().serverCloses(4401)
+      await wait(1000)
+
+      expect(FakeSocket.opened).toHaveLength(2)
+      expect(result.current.game.guesses).toHaveLength(1)
     })
   })
 })
@@ -1042,5 +1054,131 @@ describe('useGame: a slow answer never replaces the game on screen', () => {
     expect(result.current.game.id).toBe('B')
     expect(result.current.game.status).toBe('in_progress')
     expect(result.current.message).toBe('')
+  })
+})
+
+
+describe('useGame: whose game is in the address', () => {
+  // The browser's history remembers game addresses. On a shared computer the next person
+  // to sign in must not be joined to the previous person's game by pressing Back.
+  const NOT_A_PLAYER = "You're not a player in that game."
+
+  async function goBack() {
+    await act(async () => {
+      window.history.back()
+      await new Promise((resolve) => window.addEventListener('popstate', resolve, { once: true }))
+    })
+  }
+
+  it('joins a game from a freshly opened link', async () => {
+    window.history.replaceState(null, '', '/?game=invite')
+    api.joinGame.mockResolvedValue(makeGame({ id: 'invite' }))
+
+    const result = await renderGame()
+
+    await waitFor(() => expect(result.current.game?.id).toBe('invite'))
+    expect(api.joinGame).toHaveBeenCalledExactlyOnceWith('invite')
+  })
+
+  it("does not join a game that Back returns to if another player opened it", async () => {
+    // sam played here first: his games are in the history
+    const sams = renderHook(() => useGame(SAM))
+    await waitFor(() => expect(sams.result.current.config).not.toBeNull())
+    api.createGame.mockResolvedValue(makeGame({ id: 'sams-game' }))
+    await act(() => sams.result.current.startGame())
+    api.createGame.mockResolvedValue(makeGame({ id: 'sams-second-game' }))
+    await act(() => sams.result.current.startGame())
+    sams.unmount() // sam signs out...
+    window.history.replaceState({}, '', '/') // ...which clears the address
+
+    // erica signs in on the same browser and presses Back
+    api.joinGame.mockClear()
+    api.getGame.mockRejectedValue(apiError('NOT_A_PLAYER'))
+    const result = await renderGame()
+    await goBack()
+
+    await waitFor(() => expect(result.current.message).toBe(NOT_A_PLAYER))
+    expect(api.joinGame).not.toHaveBeenCalled()
+    expect(result.current.game).toBeNull()
+    expect(window.location.search).toBe('')
+  })
+
+  it('still opens that game if this player is in it too', async () => {
+    const sams = renderHook(() => useGame(SAM))
+    await waitFor(() => expect(sams.result.current.config).not.toBeNull())
+    api.createGame.mockResolvedValue(makeGame({ id: 'shared', players: [SAM, ERICA] }))
+    await act(() => sams.result.current.startGame())
+    api.createGame.mockResolvedValue(makeGame({ id: 'another' }))
+    await act(() => sams.result.current.startGame())
+    sams.unmount()
+    window.history.replaceState({}, '', '/')
+
+    api.joinGame.mockClear()
+    api.getGame.mockResolvedValue(makeGame({ id: 'shared', players: [SAM, ERICA] }))
+    const result = await renderGame()
+    await goBack()
+
+    await waitFor(() => expect(result.current.game?.id).toBe('shared'))
+    expect(api.joinGame).not.toHaveBeenCalled() // opened by reading it, not by joining
+  })
+
+  it('does not join the game left in the address when a different player signs in', async () => {
+    // sam's sign-in expired with his game still in the address bar; nothing cleared it
+    const sams = renderHook(() => useGame(SAM))
+    await waitFor(() => expect(sams.result.current.config).not.toBeNull())
+    api.createGame.mockResolvedValue(makeGame({ id: 'sams-game' }))
+    await act(() => sams.result.current.startGame())
+    sams.unmount()
+    expect(window.location.search).toBe('?game=sams-game')
+
+    api.joinGame.mockClear()
+    api.getGame.mockRejectedValue(apiError('NOT_A_PLAYER'))
+    const result = await renderGame() // erica signs in
+
+    await waitFor(() => expect(result.current.message).toBe(NOT_A_PLAYER))
+    expect(api.joinGame).not.toHaveBeenCalled()
+    expect(window.location.search).toBe('')
+  })
+
+  it('reopens your own game when you sign in again after your sign-in expired', async () => {
+    const first = renderHook(() => useGame(ERICA))
+    await waitFor(() => expect(first.result.current.config).not.toBeNull())
+    api.createGame.mockResolvedValue(makeGame({ id: 'ericas-game' }))
+    await act(() => first.result.current.startGame())
+    first.unmount()
+
+    api.joinGame.mockResolvedValue(makeGame({ id: 'ericas-game' }))
+    const result = await renderGame() // the same player signs back in
+
+    await waitFor(() => expect(result.current.game?.id).toBe('ericas-game'))
+  })
+
+  it('goes Back and Forward between your own games', async () => {
+    const result = await renderGame()
+    api.createGame.mockResolvedValue(makeGame({ id: 'first' }))
+    await act(() => result.current.startGame())
+    api.createGame.mockResolvedValue(makeGame({ id: 'second' }))
+    await act(() => result.current.startGame())
+    api.joinGame.mockImplementation(async (id) => makeGame({ id: id }))
+
+    await goBack()
+
+    await waitFor(() => expect(result.current.game?.id).toBe('first'))
+    expect(window.location.search).toBe('?game=first')
+  })
+
+  it('remembers that a joined invite is now yours, so a later player cannot rejoin it by Back', async () => {
+    window.history.replaceState(null, '', '/?game=invite')
+    api.joinGame.mockResolvedValue(makeGame({ id: 'invite' }))
+    const first = await renderGame()
+    await waitFor(() => expect(first.current.game?.id).toBe('invite'))
+
+    // the address still says ?game=invite, but it is now marked as opened by erica
+    api.joinGame.mockClear()
+    api.getGame.mockRejectedValue(apiError('NOT_A_PLAYER'))
+    const sams = renderHook(() => useGame(SAM))
+
+    await waitFor(() => expect(sams.result.current.message).toBe(NOT_A_PLAYER))
+    expect(api.joinGame).not.toHaveBeenCalled()
   })
 })

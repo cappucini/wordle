@@ -1,6 +1,6 @@
 // App: the whole page with a fake backend. Checks the two screens (sign-in form, game) and
 // the moves between them, and one full guess from key press to coloured tiles.
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from './api'
@@ -138,6 +138,32 @@ describe('App: signing in and out', () => {
     expect(await screen.findByRole('heading', { name: 'Sign in to play' })).toBeInTheDocument()
     // otherwise the next person to sign in on this browser would be joined to that game
     expect(window.location.search).toBe('')
+  })
+
+  it("does not join the next player to the previous player's game when they press Back", async () => {
+    // erica plays two games on a shared computer, then signs out
+    await renderSignedIn()
+    api.createGame.mockResolvedValue(makeGame({ id: 'ericas-first' }))
+    await userEvent.click(screen.getByRole('button', { name: 'New game' }))
+    await waitFor(() => expect(window.location.search).toBe('?game=ericas-first'))
+    api.createGame.mockResolvedValue(makeGame({ id: 'ericas-second' }))
+    await userEvent.click(screen.getByRole('button', { name: 'New game' }))
+    await waitFor(() => expect(window.location.search).toBe('?game=ericas-second'))
+    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    // sam signs in on the same browser and presses Back
+    api.login.mockResolvedValue({ id: 'user-sam', username: 'sam' })
+    api.getGame.mockRejectedValue(apiError('NOT_A_PLAYER'))
+    api.joinGame.mockClear()
+    await userEvent.type(await screen.findByLabelText('Username'), 'sam')
+    await userEvent.type(screen.getByLabelText('Password'), 'correct horse')
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    await screen.findByRole('button', { name: 'New game' })
+    act(() => window.history.back())
+
+    expect(await screen.findByText("You're not a player in that game.")).toBeInTheDocument()
+    expect(api.joinGame).not.toHaveBeenCalled()
+    expect(screen.queryByRole('img')).toBeNull() // no board
   })
 
   it('returns to the form even when the sign-out request fails', async () => {

@@ -11,12 +11,30 @@ export function getGameIdFromUrl() {
   return gameId === null || gameId === '' ? null : gameId
 }
 
-// Puts a game ID in the address bar without reloading the page.
+// Each history entry the app creates also records which player opened that game. The
+// browser keeps this with the entry, so it is still there after Back, Forward or a refresh.
+// It is how the page tells "a link someone just opened" (no record yet: opening it joins
+// the game) from "an address left behind by whoever used this browser before" (their
+// record: the next player must not be joined to it just by pressing Back).
+const OPENED_BY = 'wordleOpenedBy'
+
+// The ID of the player who opened the game in the address bar, or null for a fresh link.
+export function getUserWhoOpenedGameInUrl() {
+  const state = window.history.state
+  return state !== null && typeof state === 'object' && state[OPENED_BY] ? state[OPENED_BY] : null
+}
+
+// Records the current address as opened by this player, without adding a history entry.
+export function markGameInUrlAsOpenedBy(userId) {
+  window.history.replaceState({ [OPENED_BY]: userId }, '', window.location.href)
+}
+
+// Puts a game ID in the address bar without reloading the page, recorded as opened by this player.
 // pushState adds a history entry, so the browser's Back button returns to the previous game.
-export function setGameIdInUrl(gameId) {
+export function setGameIdInUrl(gameId, userId) {
   const url = new URL(window.location.href)
   url.searchParams.set(GAME_PARAM, gameId)
-  window.history.pushState({}, '', url)
+  window.history.pushState({ [OPENED_BY]: userId }, '', url)
 }
 
 // Removes the game ID from the address bar, for a link to a game that doesn't exist.

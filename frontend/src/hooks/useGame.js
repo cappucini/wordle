@@ -15,7 +15,13 @@ import {
   submitGuess,
 } from '../api'
 import { errorText } from '../errorText'
-import { clearGameIdFromUrl, getGameIdFromUrl, setGameIdInUrl } from '../gameUrl'
+import {
+  clearGameIdFromUrl,
+  getGameIdFromUrl,
+  getUserWhoOpenedGameInUrl,
+  markGameInUrlAsOpenedBy,
+  setGameIdInUrl,
+} from '../gameUrl'
 
 // If the connection that reports other players' guesses drops, the page reconnects:
 // after 1 second, then 2, 4, 8, and at most every 10 seconds after that.
@@ -27,12 +33,14 @@ const LONGEST_RECONNECT_DELAY_MS = 10000
 const NO_CONNECTION_CHECK_MS = 5000
 
 // close codes after which reconnecting is pointless: the backend refused on purpose
-const REFUSED = [SOCKET_CLOSED_NOT_AUTHENTICATED, SOCKET_CLOSED_NOT_A_PLAYER, SOCKET_CLOSED_GAME_NOT_FOUND]
+const REFUSED = [SOCKET_CLOSED_NOT_A_PLAYER, SOCKET_CLOSED_GAME_NOT_FOUND]
 
 // Holds everything the game screen needs to know, and the actions that change it.
 // Components only display what this returns; they never call the API themselves.
 // This is called from GameScreen.jsx, which is only shown once a player has signed in.
-export function useGame() {
+// `user` is the signed-in player ({ id, username }).
+export function useGame(user) {
+  const userId = user.id
   // Every call useState() dedicates a piece of state with a given starting value.
   // They belong to the page's working memory, and will be wiped on refresh.
   const [config, setConfig] = useState(null) // the rules, from the backend
@@ -131,8 +139,15 @@ export function useGame() {
   }
 
   // Show the game whose ID is in the address bar.
-  // It joins the game first: opening a link someone shared is how a player joins their game.
-  // Joining a game you are already in changes nothing, so this is also how your own games load.
+  //
+  // Normally it joins the game first: opening a link someone shared is how a player joins
+  // their game, and joining a game you are already in changes nothing, so this is also how
+  // your own games load.
+  //
+  // The exception is an address that a *different* player opened on this browser (reached
+  // with Back, or left in the address bar when their sign-in ended). That is not an
+  // invitation, so the game is only read: it shows if this player happens to be in it too,
+  // and otherwise they are told they are not a player. Nobody is joined by pressing Back.
   const showGameFromUrl = useCallback(() => {
     const gameId = getGameIdFromUrl()
     latestLoad.current += 1
@@ -146,12 +161,16 @@ export function useGame() {
       setIsLoadingGame(false)
       return
     }
+    const openedBy = getUserWhoOpenedGameInUrl()
+    const wasOpenedByAnotherPlayer = openedBy !== null && openedBy !== userId
     setIsLoadingGame(true)
-    joinGame(gameId)
+    const load = wasOpenedByAnotherPlayer ? getGame(gameId) : joinGame(gameId)
+    load
       .then((loadedGame) => {
         if (thisLoad !== latestLoad.current) {
           return // a newer load has started since; ignore this stale answer
         }
+        markGameInUrlAsOpenedBy(userId) // this player is in the game: the address is theirs now
         setGame(loadedGame)
         setMessage('')
         setIsLoadingGame(false)
@@ -167,7 +186,7 @@ export function useGame() {
         setMessage(errorText(error))
         setIsLoadingGame(false)
       })
-  }, [refreshGames, changeTypedWord])
+  }, [refreshGames, changeTypedWord, userId])
 
   // Run it on first load, and again whenever the player uses the browser's Back or Forward
   // buttons to move between games.
@@ -183,7 +202,7 @@ export function useGame() {
     if (gameId === getGameIdFromUrl()) {
       return // already showing it; don't add a duplicate entry to the browser's history
     }
-    setGameIdInUrl(gameId)
+    setGameIdInUrl(gameId, userId)
     showGameFromUrl()
   }
 
@@ -255,12 +274,14 @@ export function useGame() {
           return // we closed it ourselves
         }
         if (REFUSED.includes(event.code)) {
-          if (event.code === SOCKET_CLOSED_NOT_AUTHENTICATED) {
-            // The sign-in has ended. This request gets the same answer, and api.js then
-            // takes the page back to the sign-in form.
-            fetchLatest()
-          }
           return
+        }
+        if (event.code === SOCKET_CLOSED_NOT_AUTHENTICATED) {
+          // The server believes the sign-in has ended. Ask straight away: if it has, this
+          // request gets a 401 and api.js takes the page back to the sign-in form (which
+          // removes this screen and its timers). If the sign-in was extended since the
+          // connection opened, the request succeeds and we simply reconnect below.
+          fetchLatest()
         }
         // No connection from here on, so keep the board up to date the slow way.
         startCheckingOnATimer()
@@ -301,7 +322,7 @@ export function useGame() {
         refreshGames()
         return
       }
-      setGameIdInUrl(newGame.id)
+      setGameIdInUrl(newGame.id, userId)
       setGame(newGame)
       setIsLoadingGame(false)
       changeTypedWord('')
