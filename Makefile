@@ -18,10 +18,10 @@ define run_layer
 	exit $$status
 endef
 
-.PHONY: test test-unit test-api
+.PHONY: test test-unit test-api test-security
 
 # Run every layer, fastest first, stopping at the first layer that fails.
-test: test-unit test-api
+test: test-unit test-api test-security
 
 # Layer 1: backend unit tests (no database, no network).
 test-unit:
@@ -30,3 +30,7 @@ test-unit:
 # Layer 2: backend API tests (FastAPI + a throwaway Postgres).
 test-api:
 	$(call run_layer,api,pytest tests/api)
+
+# Layer 3: security tests (the sign-in, CSRF, access and secrecy rules; same throwaway Postgres).
+test-security:
+	$(call run_layer,api,pytest tests/security)
