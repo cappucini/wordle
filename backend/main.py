@@ -23,6 +23,7 @@ from app.domain.errors import (
     NotAPlayer,
     NotAuthenticated,
     NoWordsAvailable,
+    TooManyAttempts,
     UsernameTaken,
 )
 from app.words.seed import seed_words_if_empty
@@ -135,6 +136,17 @@ def handle_not_a_player(request: Request, exc: NotAPlayer):
 def handle_csrf_check_failed(request: Request, exc: CsrfCheckFailed):
     return JSONResponse(
         status_code=403, content={"code": "CSRF_CHECK_FAILED", "detail": str(exc)}
+    )
+
+
+# too many log-in or sign-up attempts in the last few minutes
+@app.exception_handler(TooManyAttempts)
+def handle_too_many_attempts(request: Request, exc: TooManyAttempts):
+    return JSONResponse(
+        status_code=429,
+        content={"code": "TOO_MANY_ATTEMPTS", "detail": str(exc)},
+        # the standard header telling a client how many seconds to wait
+        headers={"Retry-After": str(exc.retry_after_seconds)},
     )
 
 

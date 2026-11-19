@@ -106,6 +106,7 @@ describe('useGame: opening a game from the address', () => {
   it.each([
     ['GAME_FULL', 'That game already has the maximum number of players.'],
     ['GAME_NOT_FOUND', "That game doesn't exist. Start a new one?"],
+    ['GAME_OVER', 'This game has already finished.'],
     ['INVALID_REQUEST', "That link or request isn't valid. Start a new game?"],
   ])('explains a %s link and takes it out of the address', async (code, text) => {
     window.history.replaceState({}, '', '/?game=some-game')

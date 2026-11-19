@@ -16,6 +16,12 @@ MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
 SESSION_DAYS = 7  # how long a sign-in stays valid
 
+# Limits on log-in and sign-up attempts (see app/api/v1/rate_limits.py)
+RATE_LIMIT_WINDOW_SECONDS = 5 * 60  # attempts are counted over the last five minutes
+MAX_FAILED_LOGINS_PER_USERNAME = 10  # wrong passwords for one account
+MAX_FAILED_LOGINS_PER_ADDRESS = 30  # wrong passwords from one network address, any account
+MAX_SIGNUPS_PER_ADDRESS = 20  # accounts created from one network address
+
 
 class LetterResult(str, Enum):
     correct = "correct"  # right letter, right position

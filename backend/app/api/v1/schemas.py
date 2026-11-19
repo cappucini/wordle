@@ -37,6 +37,14 @@ class CredentialsRequest(BaseModel):
     def normalise_username(cls, value):
         return value.strip().lower() if isinstance(value, str) else value
 
+    # eight spaces are eight characters, but not a password
+    @field_validator("password")
+    @classmethod
+    def password_is_not_blank(cls, value: str) -> str:
+        if value.strip() == "":
+            raise ValueError("must not be only spaces")
+        return value
+
 
 # What other people may see about a user. The password hash is never included.
 class UserResponse(BaseModel):

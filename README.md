@@ -136,6 +136,45 @@ ws://localhost:8000/api/v1/games/{game_id}/ws
   channel (for example Postgres `LISTEN`/`NOTIFY`) so a guess handled by one reaches pages
   connected to another.
 
+### Limits on log-in and sign-up
+
+To slow down password guessing, the backend counts attempts over the last five minutes and
+answers `429 TOO_MANY_ATTEMPTS` (with a `Retry-After` header) once a limit is reached:
+
+| Limit | Allowed in 5 minutes |
+|---|---|
+| Wrong passwords for one username | 10 |
+| Wrong passwords from one network address, across all usernames | 30 |
+| Accounts created from one network address | 20 |
+
+A successful log-in clears that username's count. The numbers are in
+`backend/app/domain/rules.py`.
+
+- The counts are kept in the backend's memory, so they reset when it restarts.
+- The address is the one the connection comes from. Behind a reverse proxy that is the
+  proxy's address for every user, so the per-address limits would be shared by everyone; a
+  deployment like that needs the real client address passed through first.
+- Someone who knows a username can keep it at its limit and so stop that player logging in
+  for a while. They cannot end a session the player already has.
+
+### Changing the database schema
+
+The backend creates any missing tables when it starts, but it does not alter tables that
+already exist; there are no migrations. After a change to the models in `backend/app/db.py`
+(a new column or index), recreate the development database:
+
+```bash
+docker compose down -v      # deletes the dev database, including its users and games
+docker compose up --build
+```
+
+The word lists are loaded again automatically. To keep existing data instead, apply the
+change by hand. For the index added on `game_players.user_id`:
+
+```bash
+docker compose exec db psql -U wordle -d wordle -c "CREATE INDEX IF NOT EXISTS ix_game_players_user_id ON game_players (user_id);"
+```
+
 ### Development Workflow
 
 1. Start the backend with `docker compose up --build`
@@ -212,13 +251,13 @@ Run these from the repository root.
 
 | Command | What it runs | Tests | Takes about |
 |---|---|---|---|
-| `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 215 | 2 s |
-| `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 214 | 3 s |
-| `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres. | 160 | 9 s |
-| `make test-security` | Security tests: sign-in and CSRF on every route, who may open the WebSocket, hashed secrets, game access, the hidden answer, hostile input. | 192 | 10 s |
+| `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 229 | 2 s |
+| `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 218 | 3 s |
+| `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres. | 164 | 9 s |
+| `make test-security` | Security tests: sign-in and CSRF on every route, who may open the WebSocket, log-in and sign-up limits, hashed secrets, game access, the hidden answer, hostile input. | 209 | 17 s |
 | `make test-concurrency` | Race tests: joins, guesses and sign-ups sent at the same instant. | 8 | 5 s |
 | `make test-e2e` | End-to-end tests: headless Chromium driving the real frontend and backend through seven user journeys. | 7 | 20 s |
-| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 796 | 50 s |
+| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 835 | 60 s |
 
 The first run of a layer is slower, because Docker builds its image.
 

@@ -2,6 +2,8 @@
 
 from uuid import uuid4
 
+import pytest
+
 from tests.support import API, WRONG_5
 
 NOT_A_PLAYER = {"code": "NOT_A_PLAYER", "detail": "You are not a player in this game"}
@@ -81,6 +83,36 @@ def test_join_without_a_csrf_token_is_refused(player, other_player):
     assert response.status_code == 403
     assert response.json()["code"] == "CSRF_CHECK_FAILED"
     assert player.game(game["id"])["players"] == [as_player(player)]
+
+
+@pytest.mark.parametrize("ending", ["won", "lost"])
+def test_joining_a_finished_game_is_refused(player, other_player, ending):
+    game = player.create_game()
+    for word in ["crane"] if ending == "won" else WRONG_5:
+        player.guess(game["id"], word)
+
+    response = other_player.join(game["id"])
+
+    assert response.status_code == 409
+    assert response.json() == {"code": "GAME_OVER", "detail": "This game is already over"}
+    # they were not added, and learned nothing about how it went
+    assert "crane" not in response.text
+    assert len(player.game(game["id"])["players"]) == 1
+    assert other_player.get(f"/games/{game['id']}").status_code == 403
+    assert other_player.get("/games").json()["items"] == []
+
+
+def test_players_already_in_a_finished_game_can_still_open_it(player, other_player):
+    game = player.create_game()
+    other_player.join(game["id"])
+    player.guess(game["id"], "crane")
+
+    # the frontend opens a game by "joining" it, so this must keep working after it ends
+    for someone in (player, other_player):
+        response = someone.join(game["id"])
+        assert response.status_code == 200
+        assert response.json()["status"] == "won"
+        assert response.json()["answer"] == "crane"
 
 
 # ---------- the player limit ----------

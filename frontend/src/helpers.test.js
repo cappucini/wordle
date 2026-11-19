@@ -17,6 +17,7 @@ describe('errorText', () => {
     ['GAME_FULL', 'That game already has the maximum number of players.'],
     ['CSRF_CHECK_FAILED', 'This page is out of date. Refresh it and try again.'],
     ['NO_WORDS_AVAILABLE', "The word lists aren't loaded yet. Try again in a moment."],
+    ['TOO_MANY_ATTEMPTS', 'Too many attempts. Wait a few minutes and try again.'],
   ])('has a plain sentence for %s', (code, sentence) => {
     expect(errorText(apiError(code, 'technical detail from the backend'))).toBe(sentence)
   })

@@ -95,6 +95,7 @@ describe('AuthForm: signing in', () => {
     // a username or password of a shape no account can have is simply wrong
     ['INVALID_REQUEST', 'Wrong username or password.'],
     ['NETWORK_ERROR', "Can't reach the game server. Is it running?"],
+    ['TOO_MANY_ATTEMPTS', 'Too many attempts. Wait a few minutes and try again.'],
     ['SOMETHING_NEW', 'Something went wrong. Please try again.'],
   ])('explains a %s error', async (code, text) => {
     renderForm({ onSignIn: vi.fn().mockRejectedValue(apiError(code)) })
@@ -187,6 +188,17 @@ describe('AuthForm: creating an account', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
 
     expect(message()).toHaveTextContent('Passwords need at least 8 characters.')
+    expect(onCreateAccount).not.toHaveBeenCalled()
+  })
+
+  it('refuses a password made only of spaces before sending anything', async () => {
+    const { onCreateAccount } = renderForm()
+    await switchToCreate()
+
+    await fillIn('erica', '          ')
+    await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
+
+    expect(message()).toHaveTextContent("Passwords can't be only spaces.")
     expect(onCreateAccount).not.toHaveBeenCalled()
   })
 

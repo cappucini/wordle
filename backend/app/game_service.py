@@ -92,6 +92,10 @@ def join_game(session: Session, user: UserRow, game_id: UUID) -> tuple[GameRow, 
         raise GameNotFound(f"Game {game_id} not found")
     if _is_player(game, user):
         return game, False
+    if game.status != GameStatus.in_progress.value:
+        # A finished game takes no new players: joining it would only be a way to read
+        # its answer. Its own players can still open it (they returned just above).
+        raise GameOver("This game is already over")
     if len(game.players) >= MAX_PLAYERS_PER_GAME:
         raise GameFull(f"This game already has {MAX_PLAYERS_PER_GAME} players")
 

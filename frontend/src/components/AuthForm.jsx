@@ -128,6 +128,9 @@ function checkInputs(username, password, isCreating) {
   if (name.length < 3 || name.length > 20 || !/^[a-zA-Z0-9_]+$/.test(name)) {
     return 'Usernames are 3 to 20 letters, numbers or underscores.'
   }
+  if (password.trim() === '') {
+    return "Passwords can't be only spaces."
+  }
   if (password.length < 8) {
     return 'Passwords need at least 8 characters.'
   }

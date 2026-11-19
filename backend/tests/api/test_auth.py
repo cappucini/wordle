@@ -72,6 +72,7 @@ def test_sign_up_with_a_taken_username_is_refused(client, new_client, second_spe
         pytest.param({"username": "erica!", "password": PASSWORD}, "username", id="username with punctuation"),
         pytest.param({"username": "erica", "password": "short"}, "password", id="password too short"),
         pytest.param({"username": "erica", "password": "p" * 129}, "password", id="password too long"),
+        pytest.param({"username": "erica", "password": " " * 8}, "password", id="password of only spaces"),
         pytest.param({"username": "erica"}, "password", id="password missing"),
         pytest.param({"password": PASSWORD}, "username", id="username missing"),
         pytest.param(
