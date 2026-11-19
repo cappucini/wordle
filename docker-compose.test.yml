@@ -1,0 +1,21 @@
+# The test stack. Separate from docker-compose.yml: its own project name, no host ports,
+# no shared volumes, so it can run while the development stack is up.
+#
+# Run it through the Makefile: `make test-unit`, or `make test` for everything.
+name: wordle-test
+
+services:
+  # Layer 1: backend unit tests. Pure logic only.
+  # network_mode "none" removes the network entirely, so a unit test that reaches for
+  # the database or the internet fails instead of quietly becoming an integration test.
+  unit:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.test
+    volumes:
+      - ./backend:/app:ro
+    network_mode: none
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    command: pytest tests/unit

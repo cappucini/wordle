@@ -1,0 +1,10 @@
+# Image for running the backend tests: the production dependencies plus the test ones.
+# The code itself is not copied in; docker-compose.test.yml mounts ./backend at /app,
+# so the tests always run against the files on disk.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt requirements-test.txt ./
+
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-test.txt

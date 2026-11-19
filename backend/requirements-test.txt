@@ -1,0 +1,2 @@
+# Test-only dependencies. Installed by Dockerfile.test, never by the production Dockerfile.
+pytest>=8.0
