@@ -183,7 +183,10 @@ export function useGame(user, { isTypingPaused = false } = {}) {
         if (thisLoad !== latestLoad.current) {
           return // a newer load has started since; ignore this stale answer
         }
-        markGameInUrlAsOpenedBy(userId) // this player is in the game: the address is theirs now
+        // This player is in the game: the address is theirs now. It is also rewritten to
+        // the ID as the server spells it, in case the link had it in capitals or without
+        // hyphens; the checks below ("is this game still the one open?") compare the two.
+        markGameInUrlAsOpenedBy(userId, loadedGame.id)
         setGame(loadedGame)
         setMessage('')
         setIsLoadingGame(false)
