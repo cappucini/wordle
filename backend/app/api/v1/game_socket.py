@@ -90,6 +90,19 @@ def _check_access(token: str | None, game_id: UUID) -> _Access:
         )
 
 
+def _sign_in_has_ended(token: str) -> bool:
+    """True if the sign-in this token belongs to no longer exists or has expired.
+
+    An ordinary function, for the same reason as _check_access: it uses the database.
+    """
+    with SessionLocal() as session:
+        try:
+            user_service.get_auth_session(session, token)
+        except NotAuthenticated:
+            return True
+        return False
+
+
 @router.websocket("/api/v1/games/{game_id}/ws")
 async def watch_game(websocket: WebSocket, game_id: UUID):
     """Opens the live connection for one game, after checking who is asking.
@@ -120,10 +133,20 @@ async def watch_game(websocket: WebSocket, game_id: UUID):
         await websocket.close(code=CLOSE_TOO_MANY_CONNECTIONS)
         return
     try:
+        # The sign-in was checked a moment ago, before this connection was listed. If the
+        # player logged out in between, the log-out found nothing to close, so look once
+        # more now that the connection is listed. (A log-out from here on closes it itself.)
+        if await run_in_threadpool(_sign_in_has_ended, token):
+            await websocket.close(code=CLOSE_NOT_AUTHENTICATED)
+            return
         # Nothing the page sends is used. Waiting here is how the server finds out
-        # that the page has gone, which raises WebSocketDisconnect.
+        # that the page has gone.
         while True:
-            await websocket.receive_text()
+            # receive() accepts any kind of message, text or binary, and reports the
+            # page going away as a message of its own
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                break
     except WebSocketDisconnect:
         pass
     finally:

@@ -122,5 +122,7 @@ def require_csrf(
         raise CsrfCheckFailed("This request is missing its CSRF token")
     # compare_digest takes the same time whether or not the values match, so the time
     # a refusal takes does not hint at how much of a guessed token was right
-    if not hmac.compare_digest(x_csrf_token, expected):
+    # Compared as bytes: compare_digest refuses text containing letters outside plain
+    # English (an accented letter, say), and a header can carry anything.
+    if not hmac.compare_digest(x_csrf_token.encode(), expected.encode()):
         raise CsrfCheckFailed("This request's CSRF token is not valid")

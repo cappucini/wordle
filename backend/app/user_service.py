@@ -31,6 +31,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.orm import Session
 
 from app.db import AuthSessionRow, UserRow
@@ -151,7 +152,13 @@ def renew_session_if_due(session: Session, auth_session: AuthSessionRow) -> bool
     if time_since_last_extended < timedelta(days=SESSION_RENEW_AFTER_DAYS):
         return False
     auth_session.expires_at = now + full_length
-    session.commit()
+    try:
+        session.commit()
+    except StaleDataError:
+        # The row was deleted after this request read it: the same sign-in was logged out
+        # by another request at the same moment. There is nothing left to extend.
+        session.rollback()
+        raise NotAuthenticated("Sign in to continue") from None
     return True
 
 
