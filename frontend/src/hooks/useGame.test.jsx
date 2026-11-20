@@ -113,6 +113,38 @@ describe('useGame: opening a game from the address', () => {
     expect(result.current.isLoadingGame).toBe(false)
   })
 
+  // The server accepts a game ID in capitals or without hyphens, and answers with the ID
+  // in its usual spelling. The page must then treat the two as the same game.
+  it('rewrites the address to the game ID as the server spells it', async () => {
+    window.history.replaceState({}, '', '/?game=GAME-1')
+
+    const result = await renderGame()
+
+    await waitFor(() => expect(result.current.game).toEqual(NEW_GAME))
+    expect(api.joinGame).toHaveBeenCalledWith('GAME-1')
+    expect(window.location.search).toBe('?game=game-1')
+  })
+
+  it('clears the row after a guess in a game opened through a differently spelled link', async () => {
+    window.history.replaceState({}, '', '/?game=GAME-1')
+    const afterGuess = makeGame({ id: 'game-1', guesses: [makeGuess('slate', 'AACAC')] })
+    const result = await renderGame()
+    await waitFor(() => expect(result.current.game).toEqual(NEW_GAME))
+    api.getGame.mockResolvedValue(afterGuess)
+
+    await type(result, 'slate')
+    await press(result, 'Enter')
+
+    expect(result.current.game).toEqual(afterGuess)
+    expect(result.current.typedWord).toBe('')
+
+    // a second Enter has nothing to send: the same word must not be guessed twice
+    await press(result, 'Enter')
+
+    expect(api.submitGuess).toHaveBeenCalledExactlyOnceWith('game-1', 'slate')
+    expect(result.current.message).toBe('Not enough letters')
+  })
+
   it.each([
     ['GAME_FULL', 'That game already has the maximum number of players.'],
     ['GAME_NOT_FOUND', "That game doesn't exist. Start a new one?"],
@@ -572,6 +604,39 @@ describe("useGame: other players' guesses", () => {
 
     expect(result.current.typedWord).toBe('cr')
     expect(result.current.game.guesses).toHaveLength(1)
+  })
+
+  // Two answers can arrive out of order. Here the reload after erica's own guess is slow,
+  // and the fetch for sam's later guess overtakes it.
+  it("keeps another player's later guess when the reload after your own guess arrives late", async () => {
+    const result = await renderSharedGame()
+    const mine = makeGuess('slate', 'AACAC', 'erica', 1)
+    const afterMine = { ...SHARED, guesses: [mine] }
+    const afterSams = { ...SHARED, guesses: [mine, makeGuess('react', 'PPCPA', 'sam', 2)] }
+    // the reload that follows erica's guess will not answer until the test lets it
+    let answerSlowReload
+    api.getGame.mockReturnValueOnce(new Promise((resolve) => (answerSlowReload = resolve)))
+    await type(result, 'slate')
+
+    // press Enter without waiting for it to finish: it is stuck on the slow reload
+    let pressingEnter
+    await act(async () => {
+      pressingEnter = result.current.pressKey('Enter')
+    })
+    await waitFor(() => expect(api.getGame).toHaveBeenCalledTimes(1))
+
+    // sam guesses; the notice arrives and its fetch answers straight away
+    api.getGame.mockResolvedValue(afterSams)
+    await latestSocket().serverSaysGameChanged()
+    expect(result.current.game.guesses).toHaveLength(2)
+
+    // only now does the slow reload answer, with the board as it was before sam's guess
+    await act(async () => {
+      answerSlowReload(afterMine)
+      await pressingEnter
+    })
+
+    expect(result.current.game.guesses).toHaveLength(2)
   })
 
   it('never replaces the board with an older copy of itself', async () => {

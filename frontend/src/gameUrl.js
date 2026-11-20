@@ -26,10 +26,19 @@ export function getUserWhoOpenedGameInUrl() {
 }
 
 // Records the current address as opened by this player, without adding a history entry.
-export function markGameInUrlAsOpenedBy(userId) {
+//
+// `gameId` is the game's ID as the server wrote it. When given, the address is rewritten to
+// use exactly that. The server accepts the same ID written other ways (in capitals, or
+// without its hyphens), but the page compares the address with the server's ID to tell
+// which game is open, so the two must be spelled the same.
+export function markGameInUrlAsOpenedBy(userId, gameId) {
+  const url = new URL(window.location.href)
+  if (gameId !== undefined) {
+    url.searchParams.set(GAME_PARAM, gameId)
+  }
   // { [OPENED_BY]: userId } uses the constant's value as the key: { wordleOpenedBy: userId }.
   // The arguments are (state to keep with the entry, an unused title, the address).
-  window.history.replaceState({ [OPENED_BY]: userId }, '', window.location.href)
+  window.history.replaceState({ [OPENED_BY]: userId }, '', url)
 }
 
 // Puts a game ID in the address bar without reloading the page, recorded as opened by this player.

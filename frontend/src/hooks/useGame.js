@@ -37,6 +37,21 @@ const NO_CONNECTION_CHECK_MS = 5000
 // close codes after which reconnecting is pointless: the backend refused on purpose
 const REFUSED = [SOCKET_CLOSED_NOT_A_PLAYER, SOCKET_CLOSED_GAME_NOT_FOUND]
 
+// Two answers about the same game can arrive out of order: a slow reply may describe the game
+// as it was before a faster one. This picks which copy to show, so the board never steps back.
+// `current` is the game on screen; `incoming` is the copy that has just arrived.
+function newestCopy(current, incoming) {
+  if (current === null || current.id !== incoming.id) {
+    return incoming // nothing to compare with: a different game, or none on screen yet
+  }
+  const isOlder =
+    incoming.guesses.length < current.guesses.length ||
+    incoming.players.length < current.players.length ||
+    // a finished game never goes back to being in progress
+    (incoming.status === 'in_progress' && current.status !== 'in_progress')
+  return isOlder ? current : incoming
+}
+
 // Holds everything the game screen needs to know, and the actions that change it.
 // Components only display what this returns; they never call the API themselves.
 // This is called from GameScreen.jsx, which is only shown once a player has signed in.
@@ -183,7 +198,10 @@ export function useGame(user, { isTypingPaused = false } = {}) {
         if (thisLoad !== latestLoad.current) {
           return // a newer load has started since; ignore this stale answer
         }
-        markGameInUrlAsOpenedBy(userId) // this player is in the game: the address is theirs now
+        // This player is in the game: the address is theirs now. It is also rewritten to
+        // the ID as the server spells it, in case the link had it in capitals or without
+        // hyphens; the checks below ("is this game still the one open?") compare the two.
+        markGameInUrlAsOpenedBy(userId, loadedGame.id)
         setGame(loadedGame)
         setMessage('')
         setIsLoadingGame(false)
@@ -427,7 +445,7 @@ export function useGame(user, { isTypingPaused = false } = {}) {
               setRowHasProblem(false)
               const finishedGame = await getGame(game.id)
               if (isStillOpen()) {
-                setGame(finishedGame)
+                setGame((current) => newestCopy(current, finishedGame))
               }
             } else {
               // an invalid word lands here; the typed letters stay so the player can fix them
@@ -448,9 +466,11 @@ export function useGame(user, { isTypingPaused = false } = {}) {
           setRowHasProblem(false)
 
           // Step 3: the server owns the game, so reload it rather than updating our own copy.
+          // Another player's guess may have reached the board while this reload was on its
+          // way, so keep whichever copy is newer rather than always taking this one.
           const reloadedGame = await getGame(game.id)
           if (isStillOpen()) {
-            setGame(reloadedGame)
+            setGame((current) => newestCopy(current, reloadedGame))
           }
           refreshGames() // keep the guess count and status in "Your games" up to date
         } catch (error) {

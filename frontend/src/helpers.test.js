@@ -109,6 +109,17 @@ describe('gameUrl', () => {
     expect(getUserWhoOpenedGameInUrl()).toBeNull()
   })
 
+  it('rewrites the game in the address to the spelling it is given', () => {
+    window.history.replaceState(null, '', '/?game=ABC-123')
+    const before = window.history.length
+
+    markGameInUrlAsOpenedBy('user-erica', 'abc-123')
+
+    expect(getGameIdFromUrl()).toBe('abc-123')
+    expect(getUserWhoOpenedGameInUrl()).toBe('user-erica')
+    expect(window.history.length).toBe(before)
+  })
+
   it('can mark the game already in the address without adding a history entry', () => {
     window.history.replaceState(null, '', '/?game=abc-123')
     const before = window.history.length
