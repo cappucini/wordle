@@ -234,11 +234,39 @@ by setting an environment variable on the backend: `MAX_FAILED_LOGINS_PER_USERNA
 `MAX_FAILED_LOGINS_PER_ADDRESS`, `MAX_SIGNUPS_PER_ADDRESS` or
 `MAX_REFUSED_SIGNUPS_PER_ADDRESS`.
 
+### Rules the database enforces
+
+The code in `backend/app/game_service.py` checks every rule of the game and gives the player
+a clear error. The rules that a single row can be checked against are enforced by the
+database as well, so a row that breaks one is refused whichever code tried to save it.
+
+| Rule | Enforced in the database by |
+|---|---|
+| A username is used once | A unique constraint on `users.username` |
+| A player is in a game once | The primary key of `game_players` |
+| A game's status is in progress, won or lost | A CHECK constraint on `games` |
+| A word length is within the allowed range, with one more guess than letters | CHECK constraints on `games` |
+| The answer has as many letters as the game's word length | A CHECK constraint on `games` |
+| Guess numbers start at 1 and are not repeated within a game | A CHECK and a unique constraint on `guesses` |
+| A guess is made by one of the game's players | A two-column foreign key from `guesses` to `game_players` |
+| Every game has an owner, every guess an author and every sign-in a CSRF token | Required (NOT NULL) columns; no column in the database is optional |
+
+The numbers in these constraints come from `backend/app/domain/rules.py`. They are part of
+the tables, so they reach a database only when its tables are created: after changing
+`MIN_WORD_LENGTH`, `MAX_WORD_LENGTH` or `EXTRA_GUESSES`, recreate the database (see below).
+
+**Rules the database does not enforce.** Some rules depend on other rows, which a constraint
+cannot see: at most `MAX_PLAYERS_PER_GAME` players in a game, no more guesses than the game
+allows, a guess having the game's word length, and no guesses on a finished game. The service
+code enforces these while holding a lock on the game's row, so two requests at the same
+instant are handled one after the other, and the concurrency tests check that they hold. The
+database has no triggers.
+
 ### Changing the database schema
 
 The backend creates any missing tables when it starts, but it does not alter tables that
 already exist; there are no migrations. After a change to the models in `backend/app/db.py`
-(a new column or index), recreate the development database:
+(a new column, index or constraint), recreate the development database:
 
 ```bash
 docker compose down -v      # deletes the dev database, including its users and games
@@ -361,12 +389,12 @@ Run these from the repository root.
 | Command | What it runs | Tests | Takes about |
 |---|---|---|---|
 | `make test-unit` | Backend unit tests: scoring, rules, request limits, password hashing, cursors, live-update notices. No database, no network. | 261 | 2 s |
-| `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 288 | 4 s |
-| `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres. | 175 | 9 s |
+| `make test-frontend` | Frontend component tests: the components, the game hook and the API client, with a fake backend. Same as `cd frontend && npm test`. | 292 | 4 s |
+| `make test-api` | Backend API tests: real HTTP requests (and the live-update WebSocket) through FastAPI into a throwaway Postgres, and the rules the database enforces by itself. | 186 | 9 s |
 | `make test-security` | Security tests: sign-in and CSRF on every route, who may open the WebSocket, log-in and sign-up limits, hashed secrets, game access, the hidden answer, hostile input. | 221 | 19 s |
 | `make test-concurrency` | Race tests: joins, guesses and sign-ups sent at the same instant. | 8 | 5 s |
 | `make test-e2e` | End-to-end tests: headless Chromium driving the real frontend and backend through seven user journeys, plus 17 layout checks at desktop, small-laptop and phone sizes. | 24 | 45 s |
-| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 977 | 85 s |
+| `make test` | All of the above, fastest first, stopping at the first layer that fails. | 992 | 85 s |
 
 The first run of a layer is slower, because Docker builds its image.
 
