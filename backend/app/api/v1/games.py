@@ -145,4 +145,6 @@ def submit_guess(
     )
     # the guess is saved; tell every page that has this game open
     watchers.notify(game_id)
+    # The reply: the guess with its colours (worked out here by score(), never stored),
+    # plus the game's new status, and the answer only if this guess ended the game.
     return GuessCreatedResponse.from_rows(guess, game)
