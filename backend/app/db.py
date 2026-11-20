@@ -8,8 +8,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -25,7 +27,19 @@ from sqlalchemy.orm import (
     sessionmaker,
 )
 
-from app.domain.rules import MAX_WORD_LENGTH, GameStatus
+from app.domain.rules import (
+    EXTRA_GUESSES,
+    MAX_WORD_LENGTH,
+    MIN_WORD_LENGTH,
+    GameStatus,
+)
+
+# The rules of the game are checked by the code in app/game_service.py, which gives players
+# a clear error. The rules that one row can be checked against by itself are also enforced by
+# the database (the CHECK constraints, required columns and foreign keys in this file), which
+# refuses such a row no matter which code tried to save it. The numbers in these constraints
+# come from app/domain/rules.py.
+_STATUS_VALUES = ", ".join(f"'{status.value}'" for status in GameStatus)
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql+psycopg://wordle:wordle@db:5432/wordle"
@@ -80,7 +94,7 @@ class AuthSessionRow(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     # A second secret for this sign-in. The page must send it back in a header on every
     # request that changes something, which proves the request came from our own page.
-    csrf_token: Mapped[str | None] = mapped_column(String(64))
+    csrf_token: Mapped[str] = mapped_column(String(64))
 
     # not a column: relationship() loads the UserRow that user_id points to
     user: Mapped["UserRow"] = relationship()
@@ -106,13 +120,25 @@ class GameRow(Base):
     __tablename__ = "games"
     # the games list is sorted and paged by (created_at, id); this index lets the
     # database jump straight to a cursor's position instead of scanning the table
-    __table_args__ = (Index("ix_games_created_at_id", "created_at", "id"),)
+    __table_args__ = (
+        Index("ix_games_created_at_id", "created_at", "id"),
+        # the database refuses a game row that breaks any of these
+        CheckConstraint(f"status IN ({_STATUS_VALUES})", name="ck_games_status"),
+        CheckConstraint(
+            f"word_length BETWEEN {MIN_WORD_LENGTH} AND {MAX_WORD_LENGTH}",
+            name="ck_games_word_length",
+        ),
+        CheckConstraint(
+            f"max_guesses = word_length + {EXTRA_GUESSES}", name="ck_games_max_guesses"
+        ),
+        CheckConstraint(
+            "char_length(answer) = word_length", name="ck_games_answer_length"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    # "| None" in the type makes the column nullable
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id"), index=True
-    )
+    # Every column in this file is required (NOT NULL): a type without "| None" makes it so.
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
     answer: Mapped[str] = mapped_column(String(MAX_WORD_LENGTH))
     word_length: Mapped[int] = mapped_column(Integer)
     max_guesses: Mapped[int] = mapped_column(Integer)
@@ -124,7 +150,7 @@ class GameRow(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     # who created the game
-    owner: Mapped["UserRow | None"] = relationship()
+    owner: Mapped["UserRow"] = relationship()
     # everyone playing it, the owner included; goes through the game_players table
     players: Mapped[list["UserRow"]] = relationship(
         secondary="game_players", order_by="GamePlayerRow.joined_at"
@@ -143,6 +169,14 @@ class GuessRow(Base):
     # the database refuses a second guess with the same number in the same game
     __table_args__ = (
         UniqueConstraint("game_id", "number", name="uq_guesses_game_number"),
+        CheckConstraint("number >= 1", name="ck_guesses_number"),
+        # whoever made a guess must be one of that game's players: the pair
+        # (game_id, user_id) has to exist as a row in game_players
+        ForeignKeyConstraint(
+            ["game_id", "user_id"],
+            ["game_players.game_id", "game_players.user_id"],
+            name="fk_guesses_made_by_a_player",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -153,9 +187,9 @@ class GuessRow(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     # who made this guess
-    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
 
-    user: Mapped["UserRow | None"] = relationship()
+    user: Mapped["UserRow"] = relationship()
 
 
 class GamePlayerRow(Base):
@@ -176,7 +210,9 @@ class GamePlayerRow(Base):
 
 
 def create_tables() -> None:
-    """Creates the tables that do not exist yet. Existing tables are left as they are."""
+    """Creates the tables that do not exist yet. Existing tables are left as they are:
+    a constraint added to a table class above only reaches a database when its tables
+    are created again (see the README)."""
     Base.metadata.create_all(engine)
 
 
