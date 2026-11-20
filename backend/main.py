@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.auth import renew_session_cookie
 from app.api.v1.config import router as config_router
@@ -91,6 +92,27 @@ def handle_validation_error(request: Request, exc: RequestValidationError):
         status_code=422,
         content={"code": "INVALID_REQUEST", "detail": f"{field}: {message}"},
     )
+
+# Errors the framework raises by itself, before any route runs: an address that does not
+# exist (404), a method the address does not accept (405), a body that cannot be read (400).
+# Left alone they would carry only "detail"; this gives them a "code" like every other error.
+_FRAMEWORK_ERROR_CODES = {400: "BAD_REQUEST", 404: "NOT_FOUND", 405: "METHOD_NOT_ALLOWED"}
+
+
+@app.exception_handler(StarletteHTTPException)
+def handle_framework_error(request: Request, exc: StarletteHTTPException):
+    """Answers with the framework's own status, in the {"code", "detail"} shape."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            # a status not listed above still gets a code, built from its number
+            "code": _FRAMEWORK_ERROR_CODES.get(exc.status_code, f"HTTP_{exc.status_code}"),
+            "detail": exc.detail,
+        },
+        # keeps headers the framework set, such as Allow on a 405
+        headers=exc.headers,
+    )
+
 
 @app.exception_handler(GameNotFound)
 def handle_game_not_found(request: Request, exc: GameNotFound):
