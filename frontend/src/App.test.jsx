@@ -513,3 +513,58 @@ describe('App: the "How to play" panel', () => {
     expect(screen.queryByRole('button', { name: 'How to play' })).toBeNull()
   })
 })
+
+describe('App: when the rules cannot be loaded', () => {
+  it('explains, offers to try again, and still lets the player sign out', async () => {
+    api.getCurrentUser.mockResolvedValue(ERICA)
+    api.getConfig.mockRejectedValueOnce(apiError('NETWORK_ERROR'))
+    render(<App />)
+
+    expect(await screen.findByText("Can't reach the game server. Is it running?")).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+    // the second attempt succeeds, and the game screen appears
+    expect(await screen.findByRole('button', { name: 'New game' })).toBeInTheDocument()
+  })
+
+  it('keeps explaining after a game named in the address has loaded', async () => {
+    window.history.replaceState({}, '', '/?game=game-1')
+    api.getCurrentUser.mockResolvedValue(ERICA)
+    api.getConfig.mockRejectedValue(apiError('NETWORK_ERROR'))
+    // the game answers after the rules have failed; the test finishes it by hand
+    let finishJoin
+    api.joinGame.mockReturnValue(new Promise((resolve) => { finishJoin = resolve }))
+    render(<App />)
+    await screen.findByText("Can't reach the game server. Is it running?")
+
+    // the game arrives; loading a game clears ordinary messages
+    await act(async () => finishJoin(NEW_GAME))
+
+    expect(screen.getByText("Can't reach the game server. Is it running?")).toBeInTheDocument()
+    expect(screen.queryByText('Loading...')).toBeNull()
+  })
+})
+
+describe('App: signing out while a game is loading', () => {
+  it('leaves no game in the address on the sign-in page', async () => {
+    window.history.replaceState({}, '', '/?game=game-1')
+    api.getCurrentUser.mockResolvedValue(ERICA)
+    // the game and the sign-out are both slow; the test finishes each by hand
+    let finishJoin
+    api.joinGame.mockReturnValue(new Promise((resolve) => { finishJoin = resolve }))
+    let finishLogout
+    api.logout.mockReturnValue(new Promise((resolve) => { finishLogout = resolve }))
+    render(<App />)
+    await screen.findByRole('button', { name: 'New game' }) // the game screen is up; the game is not
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    await act(async () => finishJoin(NEW_GAME)) // the game arrives after "Sign out" was clicked
+    await act(async () => finishLogout(null))
+
+    expect(await screen.findByRole('heading', { name: 'Sign in to play' })).toBeInTheDocument()
+    expect(window.location.search).toBe('')
+    expect(screen.queryByText(/You've been invited/)).toBeNull()
+  })
+})

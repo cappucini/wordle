@@ -52,6 +52,19 @@ function newestCopy(current, incoming) {
   return isOlder ? current : incoming
 }
 
+// True if `incoming` shows something the copy on screen does not: another guess, another
+// player, or the game having finished. False for an identical copy and for an older one.
+function hasNewsFor(current, incoming) {
+  if (newestCopy(current, incoming) !== incoming) {
+    return false // it is the older of the two
+  }
+  return (
+    incoming.guesses.length !== current.guesses.length ||
+    incoming.players.length !== current.players.length ||
+    incoming.status !== current.status
+  )
+}
+
 // Holds everything the game screen needs to know, and the actions that change it.
 // Components only display what this returns; they never call the API themselves.
 // This is called from GameScreen.jsx, which is only shown once a player has signed in.
@@ -69,6 +82,10 @@ export function useGame(user, { isTypingPaused = false } = {}) {
   const [game, setGame] = useState(null) // the game being played, from the backend
   const [typedWord, setTypedWord] = useState('') // the guess being typed
   const [message, setMessage] = useState('')
+  // Why the rules could not be loaded, or '' if they were (or are still on their way).
+  // Kept apart from `message`, which is cleared whenever a game loads: without the rules
+  // the screen cannot be drawn, so this must stay until they arrive.
+  const [configError, setConfigError] = useState('')
   // Two refs that mirror what the key handler needs to read. A ref can be read the instant
   // it changes, where state only updates on the next redraw. Without them, key presses that
   // arrive in a quick burst would each see the same out-of-date word and overwrite each other,
@@ -100,8 +117,9 @@ export function useGame(user, { isTypingPaused = false } = {}) {
   // can finish after a newer one; its answer is ignored so the wrong game never shows.
   const latestLoad = useRef(0)
 
-  // Runs once, when the game screen first appears: loads the game settings from the backend.
-  useEffect(() => {
+  // Loads the game settings from the backend. Called once when the game screen first
+  // appears, and again if the player clicks "Try again" after it failed.
+  const loadConfig = useCallback(() => {
     // sends request and returns a promise
     getConfig()
     // ...when the result arrives, run the function inside
@@ -110,15 +128,34 @@ export function useGame(user, { isTypingPaused = false } = {}) {
         setConfig(rules)
         // set the word length from rules
         setWordLength(rules.default_word_length)
+        setConfigError('')
       })
-      .catch((error) => setMessage(errorText(error)))
-  // [] means: run this once, after the page is first drawn
+      .catch((error) => {
+        setMessage(errorText(error))
+        setConfigError(errorText(error))
+      })
   }, [])
+
+  // Runs once, when the game screen first appears.
+  useEffect(() => {
+    loadConfig()
+  // loadConfig never changes, so this runs once, after the page is first drawn
+  }, [loadConfig])
+
+  // "Try again" on the screen shown when the rules could not be loaded.
+  function retryConfig() {
+    setConfigError('')
+    loadConfig()
+  }
 
   // How many games "Your games" is showing, and whether a "Show more" request is under way.
   // Refs, because the functions below need the current values the moment they run.
   const shownGamesCount = useRef(0)
   const isLoadingMoreGames = useRef(false)
+  // Counts the list refreshes sent, so an older one that answers late can be ignored.
+  const latestListRefresh = useRef(0)
+  // refreshGames itself, for the one place it needs to call itself (set just below it)
+  const refreshGamesAgain = useRef(() => {})
 
   // Fetch the player's games again from the top. Called on load and whenever the list may
   // have changed (a game was started, joined or finished).
@@ -127,10 +164,25 @@ export function useGame(user, { isTypingPaused = false } = {}) {
   const refreshGames = useCallback(() => {
     // for example: 14 games showing is 2 pages, so ask for 20, but never more than the
     // backend allows in one request
-    const pagesShown = Math.max(1, Math.ceil(shownGamesCount.current / GAMES_PAGE_SIZE))
-    const limit = Math.min(pagesShown * GAMES_PAGE_SIZE, MAX_GAMES_PAGE_SIZE)
+    const limitForShownGames = () => {
+      const pagesShown = Math.max(1, Math.ceil(shownGamesCount.current / GAMES_PAGE_SIZE))
+      return Math.min(pagesShown * GAMES_PAGE_SIZE, MAX_GAMES_PAGE_SIZE)
+    }
+    const limit = limitForShownGames()
+    // number this refresh: its answer only counts if no later refresh has started by then
+    latestListRefresh.current += 1
+    const thisRefresh = latestListRefresh.current
     listGames(null, limit)
       .then((page) => {
+        if (thisRefresh !== latestListRefresh.current) {
+          return // a newer refresh has been sent since; its answer is the one to show
+        }
+        if (limitForShownGames() > limit) {
+          // "Show more" added a page while this was on its way. This answer is too short
+          // to replace the list without losing that page, so ask again for all of it.
+          refreshGamesAgain.current()
+          return
+        }
         shownGamesCount.current = page.items.length
         setGames(page.items)
         setNextGamesCursor(page.next_cursor)
@@ -139,6 +191,9 @@ export function useGame(user, { isTypingPaused = false } = {}) {
         // the list is a convenience; a failure here shouldn't interrupt the game on screen
       })
   }, [])
+  useEffect(() => {
+    refreshGamesAgain.current = refreshGames
+  }, [refreshGames])
 
   // Fetch the next page and add it to the end of the list.
   function loadMoreGames() {
@@ -175,7 +230,10 @@ export function useGame(user, { isTypingPaused = false } = {}) {
   // with Back, or left in the address bar when their sign-in ended). That is not an
   // invitation, so the game is only read: it shows if this player happens to be in it too,
   // and otherwise they are told they are not a player. Nobody is joined by pressing Back.
-  const showGameFromUrl = useCallback(() => {
+  //
+  // `keepMessage` is true when the message on screen explains something that has just gone
+  // wrong (a failed "New game") and should still be there once the game has loaded.
+  const loadGameFromUrl = useCallback((keepMessage) => {
     const gameId = getGameIdFromUrl()
     // number this load: its answer only counts if no later load has started by then
     latestLoad.current += 1
@@ -185,7 +243,9 @@ export function useGame(user, { isTypingPaused = false } = {}) {
 
     if (gameId === null) {
       setGame(null)
-      setMessage('') // don't leave a message from the previous game on screen
+      if (!keepMessage) {
+        setMessage('') // don't leave a message from the previous game on screen
+      }
       setIsLoadingGame(false)
       return
     }
@@ -203,12 +263,20 @@ export function useGame(user, { isTypingPaused = false } = {}) {
         // hyphens; the checks below ("is this game still the one open?") compare the two.
         markGameInUrlAsOpenedBy(userId, loadedGame.id)
         setGame(loadedGame)
-        setMessage('')
+        if (!keepMessage) {
+          setMessage('')
+        }
         setIsLoadingGame(false)
         refreshGames() // a game joined through a link now belongs in "Your games"
       })
       .catch((error) => {
         if (thisLoad !== latestLoad.current) {
+          return
+        }
+        if (error.code === 'NOT_AUTHENTICATED') {
+          // The sign-in has ended, and api.js is taking the page back to the sign-in form.
+          // Leave the game in the address, so signing in again returns to it.
+          setIsLoadingGame(false)
           return
         }
         // the link points to a game that doesn't exist, isn't a valid ID, or is already full
@@ -218,6 +286,16 @@ export function useGame(user, { isTypingPaused = false } = {}) {
         setIsLoadingGame(false)
       })
   }, [refreshGames, changeTypedWord, userId])
+
+  // The usual way in: any message left on screen belongs to the game being left.
+  const showGameFromUrl = useCallback(() => loadGameFromUrl(false), [loadGameFromUrl])
+
+  // Stop caring about any game that is still loading or being created. Called when the
+  // player signs out: an answer that arrives after that must not put a game back in the
+  // address, where the next person to sign in on this browser would find it.
+  function cancelLoading() {
+    latestLoad.current += 1
+  }
 
   // Run it on first load, and again whenever the player uses the browser's Back or Forward
   // buttons to move between games.
@@ -244,6 +322,12 @@ export function useGame(user, { isTypingPaused = false } = {}) {
   // the page then fetches the game, so a shared board updates without anyone refreshing.
   const gameId = game !== null ? game.id : null
   const isInProgress = game !== null && game.status === 'in_progress'
+  // The game on screen, readable from inside the connection's callbacks below, which are
+  // set up once per game and would otherwise only see the game as it was at that moment.
+  const gameOnScreen = useRef(game)
+  useEffect(() => {
+    gameOnScreen.current = game
+  }, [game])
   useEffect(() => {
     // no game, or a finished one: nothing more can change, so no connection is needed
     if (gameId === null || !isInProgress) {
@@ -268,15 +352,14 @@ export function useGame(user, { isTypingPaused = false } = {}) {
             if (current === null || current.id !== latest.id) {
               return current // the player has moved to a different game meanwhile
             }
-            // only accept news: never replace the board with an older copy of itself
-            const hasNews =
-              latest.guesses.length > current.guesses.length ||
-              latest.status !== current.status ||
-              latest.players.length !== current.players.length
-            return hasNews ? latest : current
+            // answers can arrive out of order: never replace the board with an older copy
+            return hasNewsFor(current, latest) ? latest : current
           })
-          if (latest.status !== 'in_progress') {
-            refreshGames() // another player finished it: update its status in "Your games"
+          // Another player guessed, joined or finished the game: its entry in "Your games"
+          // (guess count, small board, status) needs to follow.
+          const shown = gameOnScreen.current
+          if (shown !== null && shown.id === latest.id && hasNewsFor(shown, latest)) {
+            refreshGames()
           }
         })
         .catch(() => {
@@ -395,6 +478,16 @@ export function useGame(user, { isTypingPaused = false } = {}) {
       }
       setMessage(errorText(error))
       setRowHasProblem(false)
+      // Clicking "New game" abandoned any game that was still loading (see above). No new
+      // game came of it, so if the address names a game that is not the one on screen,
+      // load that after all. Otherwise the board and the address would disagree and the
+      // page would wait for ever for an answer it has already thrown away.
+      const shownGameId = game !== null ? game.id : null
+      if (getGameIdFromUrl() !== shownGameId) {
+        loadGameFromUrl(true) // true: keep the message that says why "New game" failed
+      } else {
+        setIsLoadingGame(false)
+      }
     } finally {
       isStartingGame.current = false
     }
@@ -410,7 +503,14 @@ export function useGame(user, { isTypingPaused = false } = {}) {
       // - a guess for this game is already on its way to the server
       // - another game is loading: the board still shows the game being left, and a word
       //   typed now would be guessed in that one
-      if (game === null || game.status !== 'in_progress' || submittingForGame.current === game.id || isLoadingGame) {
+      // - the rules have not loaded: the screen shows no board, so nothing typed can be seen
+      if (
+        game === null ||
+        game.status !== 'in_progress' ||
+        submittingForGame.current === game.id ||
+        isLoadingGame ||
+        config === null
+      ) {
         return
       }
       // read the word from the ref, so this is right even if several keys arrive before a redraw
@@ -497,7 +597,7 @@ export function useGame(user, { isTypingPaused = false } = {}) {
       }
     },
     // pressKey is rebuilt when any of these change, so it never works from an old game
-    [game, isLoadingGame, refreshGames, changeTypedWord],
+    [game, isLoadingGame, config, refreshGames, changeTypedWord],
   )
 
   // Listen to the physical keyboard.
@@ -531,6 +631,11 @@ export function useGame(user, { isTypingPaused = false } = {}) {
 
   return {
     config,
+    // why the rules could not be loaded ('' if they were), and a function to try again
+    configError,
+    retryConfig,
+    // called when the player signs out: forgets any game still loading
+    cancelLoading,
     wordLength,
     setWordLength,
     game,

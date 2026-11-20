@@ -27,6 +27,11 @@ function GameScreen({ user, onSignOut }) {
   const {
     // game's rules from backend, used by NewGameControls to build length buttons
     config,
+    // why the rules could not be loaded ('' if they were), and a function to try again
+    configError,
+    retryConfig,
+    // forgets any game still loading; called just before signing out
+    cancelLoading,
     // length of word player picked, used by NewGameControls to build length buttons
     wordLength,
     // function that is called when length button is clicked
@@ -56,9 +61,34 @@ function GameScreen({ user, onSignOut }) {
     // while the rules are open, the keyboard belongs to the panel, not the board
   } = useGame(user, { isTypingPaused: isRulesOpen })
 
-  // The rules have not arrived yet. Show the error if loading them failed, or a loading line.
+  // Signs out, then lets go of focus if the click came from the mouse. A game that finishes
+  // loading after this must not put itself back in the address, where the next person to
+  // sign in on this browser would find it, so loads under way are forgotten first.
+  function handleSignOut(event) {
+    cancelLoading()
+    onSignOut()
+    blurAfterMouseClick(event)
+  }
+
+  // The rules have not arrived yet, so the game cannot be drawn. Show a loading line, or
+  // if loading them failed, why, with a way to try again. Signing out stays possible.
   if (config === null) {
-    return <p className="message">{message || 'Loading...'}</p>
+    return (
+      <>
+        <p className="signed-in">
+          <span className="signed-in-label">Signed in as</span> <strong>{user.username}</strong>
+          <button className="link-button" onClick={handleSignOut}>
+            Sign out
+          </button>
+        </p>
+        <p className="message">{configError || 'Loading...'}</p>
+        {configError !== '' && (
+          <button className="new-game" onClick={retryConfig}>
+            Try again
+          </button>
+        )}
+      </>
+    )
   }
 
   // <> ... </> is a fragment: it groups the pieces without adding an element to the page
@@ -85,14 +115,7 @@ function GameScreen({ user, onSignOut }) {
           <span className="rules-long">How to play</span>
           <span className="rules-short">Rules</span>
         </button>
-        <button
-          className="link-button"
-          // sign out, then let go of focus if the click came from the mouse
-          onClick={(event) => {
-            onSignOut()
-            blurAfterMouseClick(event)
-          }}
-        >
+        <button className="link-button" onClick={handleSignOut}>
           Sign out
         </button>
       </p>
