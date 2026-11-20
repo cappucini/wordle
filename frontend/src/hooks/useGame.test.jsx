@@ -606,6 +606,39 @@ describe("useGame: other players' guesses", () => {
     expect(result.current.game.guesses).toHaveLength(1)
   })
 
+  // Two answers can arrive out of order. Here the reload after erica's own guess is slow,
+  // and the fetch for sam's later guess overtakes it.
+  it("keeps another player's later guess when the reload after your own guess arrives late", async () => {
+    const result = await renderSharedGame()
+    const mine = makeGuess('slate', 'AACAC', 'erica', 1)
+    const afterMine = { ...SHARED, guesses: [mine] }
+    const afterSams = { ...SHARED, guesses: [mine, makeGuess('react', 'PPCPA', 'sam', 2)] }
+    // the reload that follows erica's guess will not answer until the test lets it
+    let answerSlowReload
+    api.getGame.mockReturnValueOnce(new Promise((resolve) => (answerSlowReload = resolve)))
+    await type(result, 'slate')
+
+    // press Enter without waiting for it to finish: it is stuck on the slow reload
+    let pressingEnter
+    await act(async () => {
+      pressingEnter = result.current.pressKey('Enter')
+    })
+    await waitFor(() => expect(api.getGame).toHaveBeenCalledTimes(1))
+
+    // sam guesses; the notice arrives and its fetch answers straight away
+    api.getGame.mockResolvedValue(afterSams)
+    await latestSocket().serverSaysGameChanged()
+    expect(result.current.game.guesses).toHaveLength(2)
+
+    // only now does the slow reload answer, with the board as it was before sam's guess
+    await act(async () => {
+      answerSlowReload(afterMine)
+      await pressingEnter
+    })
+
+    expect(result.current.game.guesses).toHaveLength(2)
+  })
+
   it('never replaces the board with an older copy of itself', async () => {
     const result = await renderSharedGame()
     api.getGame.mockResolvedValue(WITH_SAMS_GUESS)
